@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from rich import text
 from app.models import request_models
+from app.services.telegram_bot import bot
 
 router = APIRouter()
 
@@ -20,7 +21,7 @@ async def handle_webhook(update: request_models.TelegramUpdate):
         print("Update does not support")
         return {"status": "unsupported update type", "update_id": update.update_id}
     if text:
-        print(f"Received message from chat {chat_id}: {text}")
+        await bot.send_message(chat_id, f"Received your message: {text}")
     else:
-        print(f"Received message from chat {chat_id} with no text")
+        await bot.send_message(chat_id, "Received your message, but it has no text.")
     return {"status": "received", "update_id": update.update_id}
