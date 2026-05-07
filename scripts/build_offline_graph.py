@@ -43,8 +43,12 @@ def main():
         # 2. Merging chunks into final graph
         print("Merging chunks into final graph...")
         final_G = nx.compose(G_south, G_north)
+        print(f"Origin graph has {len(final_G.nodes)} nodes and {len(final_G.edges)} edges.")
+        final_G = ox.truncate.largest_component(final_G, strongly=True)
+        print(f"Final graph has {len(final_G.nodes)} nodes and {len(final_G.edges)} edges after keeping largest strongly connected component.")
         # Project graph to UTM zone for accurate distance calculations (important for routing)
         final_G = ox.projection.project_graph(final_G)  
+        
         del G_south, G_north
         gc.collect()
 
