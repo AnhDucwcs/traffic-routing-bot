@@ -3,6 +3,8 @@ from rich import text
 from app.models import request_models
 from app.services.telegram_bot import bot
 from app.services.crawler.bus_crawler import crawler
+from app.services.routing.pathfinder import find_shortest_path
+import time
 
 router = APIRouter()
 
@@ -48,3 +50,20 @@ async def get_map_info(request: Request):
     edges_count = graph.number_of_edges()
     
     return {"nodes": nodes_count, "edges": edges_count}
+
+@router.get("/test-route")
+async def test_route(request: Request):
+    graph = request.app.state.graph
+    
+    start_lat, start_lng = 10.843006, 106.657168  # Gò Vấp
+    end_lat, end_lng = 10.7599184,106.6816146  # Quận 5
+    
+    if graph is None:
+        return {"error": "Routing graph not loaded."}
+    
+    start_time = time.perf_counter()
+    path = await find_shortest_path(graph, start_lat, start_lng, end_lat, end_lng)
+    end_time = time.perf_counter()
+    print(f"Time taken to find path: {end_time - start_time:.2f} seconds")
+    
+    return {"path": path}
