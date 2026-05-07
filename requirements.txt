@@ -27,6 +27,7 @@ numpy==2.4.4
 osmnx==2.1.0
 packaging==26.2
 pandas==2.3.3
+pyarrow==24.0.0
 pydantic==2.13.3
 pydantic-extra-types==2.11.1
 pydantic-settings==2.14.0

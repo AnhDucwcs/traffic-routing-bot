@@ -4,7 +4,7 @@ An AI-powered bot for smart traffic routing and optimization.
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.11.15
 - OSMnx library and dependencies
 - `osmium-tool` command-line utility
 
