@@ -43,7 +43,8 @@ def main():
         # 2. Merging chunks into final graph
         print("Merging chunks into final graph...")
         final_G = nx.compose(G_south, G_north)
-        
+        # Project graph to UTM zone for accurate distance calculations (important for routing)
+        final_G = ox.projection.project_graph(final_G)  
         del G_south, G_north
         gc.collect()
 
@@ -64,7 +65,7 @@ def main():
         print("Stripping graph for routing (removing geometry and OSM metadata)...")
         keep_attrs = {'osmid', 'length', 'oneway', 'highway', 'name', 'maxspeed', 'access'}
         
-        # Lọc cho từng cạnh
+        # Filter edges to keep only necessary attributes for routing, remove geometry and other metadata
         for u, v, k, data in final_G.edges(keys=True, data=True):
             # Delete unwanted attributes, keep only those necessary for routing
             unwanted = set(data) - keep_attrs
