@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from rich import text
 from app.models import request_models
 from app.services.telegram_bot import bot
@@ -35,3 +35,16 @@ async def crawl():
     limit = 5
     results = await crawler.get_next_stops_prediction(route_id, direction, stop_id, limit)
     return {"results": results}
+
+@router.get("/map-info")
+async def get_map_info(request: Request):
+    
+    graph = request.app.state.graph
+    
+    if graph is None:
+        return {"error": "Routing graph not loaded."}
+    
+    nodes_count = graph.number_of_nodes()
+    edges_count = graph.number_of_edges()
+    
+    return {"nodes": nodes_count, "edges": edges_count}
