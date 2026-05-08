@@ -1,0 +1,37 @@
+name: Auto Bus Crawler
+
+on:
+  schedule:
+    # Chạy tự động mỗi giờ 2 lần
+    - cron: '*/30 23,0-13 * * *'  
+  # Cho phép bấm nút chạy bằng tay trên web GitHub
+  workflow_dispatch: 
+
+jobs:
+  scrape-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Requirements
+        # Cài đặt các thư viện cần thiết. Nếu bạn có file requirements.txt ở gốc thì dùng: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install httpx pymongo certifi python-dotenv pydantic_settings
+
+      - name: Run Crawler
+        env:
+          # Kéo mật khẩu từ két sắt của GitHub
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          # Báo cho Python biết thư mục gốc ở đâu để lệnh "from app.core..." không bị lỗi
+          PYTHONPATH: . 
+        
+        # Chạy file github_crawler.py theo đúng đường dẫn thư mục của bạn
+        run: python scripts/crawler/github_crawler.py
