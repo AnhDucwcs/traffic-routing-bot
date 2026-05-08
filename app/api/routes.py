@@ -4,7 +4,7 @@ from app.models import request_models
 from app.models.user_session import UserSession
 from app.services.telegram_bot import bot
 from app.services.crawler.bus_crawler import crawler
-from app.services.routing.pathfinder import find_shortest_path
+from app.services.routing.pathfinder import find_shortest_path, generate_google_maps_url
 import time
 from pyproj import Transformer
 
@@ -61,8 +61,25 @@ async def telegram_webhook(update: request_models.TelegramUpdate, request: Reque
                 await bot.send_message(chat_id, "Sorry, I couldn't find a route between those locations.")
                 return {"status": "no route found"}
             else:
+                transformer_back = Transformer.from_crs(graph.graph['crs'], "EPSG:4326", always_xy=True)
+                coordinates = []
+                for node in path:
+                    x, y = graph.nodes[node]['x'], graph.nodes[node]['y']
+                    lng, lat = transformer_back.transform(x, y)
+                    coordinates.append((lng, lat))
+                geojson_route = {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": coordinates
+                    },
+                    "properties": {}
+                }
                 await bot.send_message(chat_id, f"Route found with {len(path)} steps!")
-                return {"status": "route found", "steps": len(path)}
+                google_maps_url = generate_google_maps_url(graph, path)
+                if google_maps_url:
+                    await bot.send_message(chat_id, f"View the route on Google Maps: {google_maps_url}")
+                return {"status": "route found", "steps": len(path), "geojson": geojson_route}
     
     return {"status": "OK"}
 

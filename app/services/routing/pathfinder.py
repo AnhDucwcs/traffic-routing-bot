@@ -3,6 +3,7 @@ import osmnx as ox
 import asyncio
 import math
 from pyproj import Transformer
+from shapely import coordinates
 
 def calc_euclidean(u, v, graph):
     x1, y1 = graph.nodes[u]['x'], graph.nodes[u]['y']
@@ -42,3 +43,33 @@ async def find_shortest_path(graph, start_lat: float, start_lng: float, end_lat:
     except Exception as e:
         print(f"Lỗi: {e}")
         return []
+    
+def generate_google_maps_url(graph, path):
+    if not path:
+        return None
+    
+    transformer_back = Transformer.from_crs(graph.graph['crs'], "EPSG:4326", always_xy=True)
+    
+    start_lng, start_lat = transformer_back.transform(graph.nodes[path[0]]['x'], graph.nodes[path[0]]['y'])
+    end_lng, end_lat = transformer_back.transform(graph.nodes[path[-1]]['x'], graph.nodes[path[-1]]['y'])
+    
+    # Choosing up to 8 waypoints from the internal nodes of the path
+    internal_nodes = path[1:-1]
+    waypoints_coords = []
+    if internal_nodes:
+        step = max(1, len(internal_nodes) // 8)
+        selected_nodes = internal_nodes[::step][:8]
+        for node in selected_nodes:
+            x, y = graph.nodes[node]['x'], graph.nodes[node]['y']
+            lng, lat = transformer_back.transform(x, y)
+            waypoints_coords.append(f"{lat},{lng}")
+    
+    waypoints_str = "|".join(waypoints_coords)
+    print(f"Generated Google Maps URL with start: ({start_lat}, {start_lng}), end: ({end_lat}, {end_lng})")
+    
+    url = f"https://www.google.com/maps/dir/?api=1&origin={start_lat},{start_lng}&destination={end_lat},{end_lng}"
+    if waypoints_str:
+        url += f"&waypoints={waypoints_str}"
+    url += "&travelmode=driving"
+    
+    return url
