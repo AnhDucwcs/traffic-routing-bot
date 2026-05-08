@@ -6,7 +6,8 @@ from app.services.routing.map_builder import load_routing_graph
 
 async def lifespan(app: fastapi.FastAPI):
     app.state.graph = load_routing_graph()
-    
+    app.state.user_sessions = {}
+
     yield
     
     print("Shutting down application...")
