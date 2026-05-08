@@ -6,6 +6,7 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "Traffic Routing Bot"
     TELEGRAM_BOT_TOKEN: str
+    BUS_API_BASE_URL: str
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
         
 settings = Settings()
