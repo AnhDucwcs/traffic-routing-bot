@@ -33,6 +33,7 @@ pydantic-extra-types==2.11.1
 pydantic-settings==2.14.0
 pydantic_core==2.46.3
 Pygments==2.20.0
+pymongo==4.17.0
 pyogrio==0.12.1
 pyproj==3.7.2
 pyrobuf==0.9.3
