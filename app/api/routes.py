@@ -5,6 +5,7 @@ from app.services.telegram_bot import bot
 from app.services.crawler.bus_crawler import crawler
 from app.services.routing.pathfinder import find_shortest_path
 import time
+from pyproj import Transformer
 
 router = APIRouter()
 
@@ -55,15 +56,34 @@ async def get_map_info(request: Request):
 async def test_route(request: Request):
     graph = request.app.state.graph
     
-    start_lat, start_lng = 10.843006, 106.657168  # Gò Vấp
-    end_lat, end_lng = 10.7599184,106.6816146  # Quận 5
+    # start_lat, start_lng = 10.843006, 106.657168  # Gò Vấp
+    # end_lat, end_lng = 10.759038, 106.682809  # Quận 5
+    start_lat, start_lng = 10.727249, 106.607999
+    end_lat, end_lng = 10.759038, 106.682809
     
     if graph is None:
         return {"error": "Routing graph not loaded."}
     
     start_time = time.perf_counter()
     path = await find_shortest_path(graph, start_lat, start_lng, end_lat, end_lng)
+    
+    transformer_back = Transformer.from_crs(graph.graph['crs'], "EPSG:4326", always_xy=True)
+    coordinates = []
+    for node in path:
+        x, y = graph.nodes[node]['x'], graph.nodes[node]['y']
+        lng, lat = transformer_back.transform(x, y)
+        coordinates.append((lng, lat))
+    
+    geojson_route = {
+        "type": "Feature",
+        "geometry": {
+            "type": "LineString",
+            "coordinates": coordinates
+        },
+        "properties": {}
+    }
+    
     end_time = time.perf_counter()
     print(f"Time taken to find path: {end_time - start_time:.2f} seconds")
     
-    return {"path": path}
+    return {"geojson": geojson_route}
