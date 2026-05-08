@@ -7,6 +7,7 @@ import datetime
 from pymongo import MongoClient
 import certifi
 import time
+from pathlib import Path
 from app.core.config import settings
 
 
@@ -122,7 +123,10 @@ async def run_campaign():
     all_results = []
     
     try:
-        with open("master_stops.json", "r", encoding="utf-8") as f:
+        curent_dir = Path(__file__).resolve().parent
+        src_dir = curent_dir.parent
+        file_fath = src_dir / "crawler" / "master_stops.json"
+        with open(file_fath, "r", encoding="utf-8") as f:
             stops_data = json.load(f)
             stop_ids = [str(s["StopId"]) for s in stops_data if "StopId" in s]
     except Exception as e:
