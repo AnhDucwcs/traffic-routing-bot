@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request
 from rich import text
 from app.models import request_models
+from app.models.user_session import UserSession
 from app.services.telegram_bot import bot
 from app.services.crawler.bus_crawler import crawler
 from app.services.routing.pathfinder import find_shortest_path
@@ -14,21 +15,56 @@ async def health_check():
     return {"status": "healthy"}
 
 @router.post("/webhook")
-async def handle_webhook(update: request_models.TelegramUpdate):
+async def telegram_webhook(update: request_models.TelegramUpdate, request: Request):
     if update.message:
         chat_id = update.message.chat.id
         text = update.message.text
+        location = update.message.location
     elif update.edited_message:
         chat_id = update.edited_message.chat.id
         text = update.edited_message.text
+        location = update.edited_message.location
     else:
         print("Update does not support")
         return {"status": "unsupported update type", "update_id": update.update_id}
-    if text:
-        await bot.send_message(chat_id, f"Received your message: {text}")
-    else:
-        await bot.send_message(chat_id, "Received your message, but it has no text.")
-    return {"status": "received", "update_id": update.update_id}
+        
+    session = request.app.state.user_sessions
+    
+    if text == "/route":
+        session[chat_id] = UserSession(chat_id=chat_id, state="awaiting_start", last_updated=time.time())
+        await bot.send_message(chat_id, "Please send your starting location.")
+        return {"status": "awaiting_start"}
+    
+    if location:
+        if chat_id not in session:
+            await bot.send_message(chat_id, "Please enter '/route' to start a new routing session.")
+            return {"status": "session not found"}
+        elif session[chat_id].state == "awaiting_start":
+            session[chat_id].start_lat = location.latitude
+            session[chat_id].start_lng = location.longitude
+            session[chat_id].state = "awaiting_end"
+            session[chat_id].last_updated = time.time()
+            await bot.send_message(chat_id, "Starting location received. Please send your destination location.")
+            return {"status": "awaiting_end"}
+        elif session[chat_id].state == "awaiting_end":
+            end_lat = location.latitude
+            end_lng = location.longitude
+            session[chat_id].state = "completed"
+            await bot.send_message(chat_id, "Destination location received. Calculating route...")
+            
+            graph = request.app.state.graph
+            path = await find_shortest_path(graph, session[chat_id].start_lat, session[chat_id].start_lng, end_lat, end_lng)
+            
+            del session[chat_id]
+            
+            if not path:
+                await bot.send_message(chat_id, "Sorry, I couldn't find a route between those locations.")
+                return {"status": "no route found"}
+            else:
+                await bot.send_message(chat_id, f"Route found with {len(path)} steps!")
+                return {"status": "route found", "steps": len(path)}
+    
+    return {"status": "OK"}
 
 @router.get("/crawl")
 async def crawl():
