@@ -30,6 +30,8 @@ jobs:
         env:
           # Kéo mật khẩu từ két sắt của GitHub
           MONGO_URI: ${{ secrets.MONGO_URI }}
+          TELEGRAM_BOT_TOKEN: "dummy_token"
+          BUS_API_BASE_URL: "https://apicms.ebms.vn"
           # Báo cho Python biết thư mục gốc ở đâu để lệnh "from app.core..." không bị lỗi
           PYTHONPATH: . 
         
