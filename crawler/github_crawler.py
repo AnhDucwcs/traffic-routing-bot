@@ -30,7 +30,8 @@ async def producer_api_1(stop_id, queue, semaphore, http_client):
 
             if response.status_code == 200:
                 data = response.json()
-                
+            else:
+                print(f"[Radar] Trạm {stop_id} bị từ chối! Mã lỗi: {response.status_code}")
                 
                 if isinstance(data, list):
                     for route in data:
