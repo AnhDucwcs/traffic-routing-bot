@@ -1,0 +1,4 @@
+functions-framework==3.
+httpx==0.24.
+pymongo[srv]==4.
+certifi
