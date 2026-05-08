@@ -34,4 +34,4 @@ jobs:
           PYTHONPATH: . 
         
         # Chạy file github_crawler.py theo đúng đường dẫn thư mục của bạn
-        run: python scripts/crawler/github_crawler.py
+        run: python crawler/github_crawler.py
