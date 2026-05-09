@@ -4,6 +4,6 @@ certifi==2026.4.22
 python-socks==2.8.1
 httpx-socks==0.11.0
 socksio==1.0.0
-aiohttp==3.11.11
+aiohttp==3.13.4
 aiohttp_socks==0.10.1
 tqdm==4.67.3
