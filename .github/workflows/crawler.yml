@@ -24,7 +24,7 @@ jobs:
         # Cài đặt các thư viện cần thiết. Nếu bạn có file requirements.txt ở gốc thì dùng: pip install -r requirements.txt
         run: |
           python -m pip install --upgrade pip
-          pip install httpx pymongo certifi python-dotenv pydantic_settings
+          pip install aiohttp aiohttp_socks httpx pymongo certifi python-dotenv pydantic_settings
 
       - name: Run Crawler
         env:
@@ -32,6 +32,7 @@ jobs:
           MONGO_URI: ${{ secrets.MONGO_URI }}
           TELEGRAM_BOT_TOKEN: "dummy_token"
           BUS_API_BASE_URL: "https://apicms.ebms.vn"
+          VN_PROXY: ${{ secrets.VN_PROXY }}
           # Báo cho Python biết thư mục gốc ở đâu để lệnh "from app.core..." không bị lỗi
           PYTHONPATH: . 
         
