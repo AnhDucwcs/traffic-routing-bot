@@ -8,6 +8,8 @@ from pymongo import MongoClient
 import certifi
 import time
 from pathlib import Path
+from tqdm.asyncio import tqdm
+from httpx_socks import AsyncProxyTransport
 from app.core.config import settings
 
 
@@ -31,22 +33,23 @@ async def producer_api_1(stop_id, queue, semaphore, http_client):
             if response.status_code == 200:
                 data = response.json()
             else:
-                print(f"[Radar] Trạm {stop_id} bị từ chối! Mã lỗi: {response.status_code}")
+                tqdm.write(f"[Radar] Trạm {stop_id} bị từ chối! Mã lỗi: {response.status_code}")
                 
-                if isinstance(data, list):
-                    for route in data:
-                        route_id = route.get("r")
-                        var_id = route.get("v")
-                        active_buses = route.get("arrs", [])
-                        
-                        if route_id and var_id and len(active_buses) > 0:
-                            # PHÁT HIỆN MỤC TIÊU! Ném vào Queue cho anh lính tỉa
-                            await queue.put({
-                                "route_id": str(route_id),
-                                "variation_id": str(var_id),
-                                "stop_id": str(stop_id)
-                            })
+            if isinstance(data, list):
+                for route in data:
+                    route_id = route.get("r")
+                    var_id = route.get("v")
+                    active_buses = route.get("arrs", [])
+                    
+                    if (route_id is not None) and (var_id is not None) and len(active_buses) > 0:
+                        # PHÁT HIỆN MỤC TIÊU! Ném vào Queue cho anh lính tỉa
+                        await queue.put({
+                            "route_id": str(route_id),
+                            "variation_id": str(var_id),
+                            "stop_id": str(stop_id)
+                        })
         except Exception as e:
+            tqdm.write(f"[Radar] Lỗi khi quét trạm {stop_id}: {type(e).__name__} - {str(e)}")
             pass # Nuốt lỗi để radar không bị sập khi quét trạm khác
             
         finally:
@@ -75,7 +78,10 @@ async def consumer_api_2(worker_id, queue, http_client, all_results):
             if response.status_code == 200:
                 data = response.json()
                 if not data or not data[0].get("arrs"):
+                    tqdm.write(f"[Lính Tỉa {worker_id}] Trạm gốc {stop_id} không có dữ liệu arrs, bỏ qua!")
                     continue # Nếu trạm gốc không có dữ liệu arrs thì bỏ qua luôn
+                if not data[0].get("arrs"):
+                    continue
                 # Bưng nguyên logic tính vận tốc cực xịn của bạn vào đây
                 if data and isinstance(data, list) and len(data) > 0:
                     try:
@@ -108,7 +114,7 @@ async def consumer_api_2(worker_id, queue, http_client, all_results):
                         pass # Nếu trạm không có dữ liệu arrs thì bỏ qua
                         
         except Exception as e:
-            print(f"[Lính Tỉa {worker_id}] Bắn trượt mục tiêu {route_id}-{var_id}-{stop_id}: {e}")
+            tqdm.write(f"[Lính Tỉa {worker_id}] Bắn trượt mục tiêu {route_id}-{var_id}-{stop_id}: {type(e).__name__} - {str(e)}")
             
         finally:
             # BÁO CÁO: Đã xử lý xong gói hàng này, Hộp thư có thể gạch tên nó
@@ -117,10 +123,11 @@ async def consumer_api_2(worker_id, queue, http_client, all_results):
 
 # === 4. TƯỚNG CHỈ HUY CHIẾN DỊCH (MAIN ORCHESTRATOR) ===
 async def run_campaign():
-    print(f"BẮT ĐẦU CHIẾN DỊCH QUÉT LÚC: {datetime.datetime.now()}")
+    tqdm.write(f"BẮT ĐẦU CHIẾN DỊCH QUÉT LÚC: {datetime.datetime.now()}")
+    start_time = time.perf_counter()
     
     queue = asyncio.Queue()
-    semaphore = asyncio.Semaphore(20)
+    semaphore = asyncio.Semaphore(10)
     all_results = []
     
     try:
@@ -131,16 +138,40 @@ async def run_campaign():
             stops_data = json.load(f)
             stop_ids = [str(s["StopId"]) for s in stops_data if "StopId" in s]
     except Exception as e:
-        print("Lỗi đọc file:", e)
+        tqdm.write(f"Lỗi đọc file: {e}")
         return
         
-    headers = {"User-Agent": "Mozilla/5.0"}
-    async with httpx.AsyncClient(headers=headers, timeout=15.0) as http_client:
+    headers = {
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept-Language": "en-US,en;q=0.9,vi;q=0.8",
+        "Origin": "https://buyttphcm.com.vn",
+        "Priority": "u=1, i",
+        "Referer": "https://buyttphcm.com.vn/",
+        "Sec-Ch-Ua": '"Chromium";v="148", "Brave";v="148", "Not/A)Brand";v="99"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site",
+        "Sec-Gpc": "1",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+    }
+    proxy_url = (settings.VN_PROXY or "").strip()
+    client_kwargs = {
+        "headers": headers,
+        "timeout": 15.0,
+        "http2": True,
+    }
+    if proxy_url:
+        client_kwargs["proxy"] = proxy_url
+
+    async with httpx.AsyncClient(**client_kwargs) as http_client:
         consumers = [asyncio.create_task(consumer_api_2(i, queue, http_client, all_results)) for i in range(20)]
             
-        print(f"📡 Tung {len(stop_ids)} Radar...")
+        tqdm.write(f"Tung {len(stop_ids)} Radar...")
         producers = [producer_api_1(sid, queue, semaphore, http_client) for sid in stop_ids]
-        await asyncio.gather(*producers)
+        await tqdm.gather(*producers)
 
         await queue.join()
         
@@ -149,9 +180,12 @@ async def run_campaign():
             
     if all_results:
         collection.insert_many(all_results)
-        print(f"Đã đổ {len(all_results)} kết quả vào MongoDB!")
+        tqdm.write(f"Đã đổ {len(all_results)} kết quả vào MongoDB!")
     else:
-        print("Không thu hoạch được dữ liệu.")
+        tqdm.write("Không thu hoạch được dữ liệu.")
+
+    end_time = time.perf_counter()
+    tqdm.write(f"Thời gian thực hiện chiến dịch: {end_time - start_time:.2f} giây")
 
 # Không có while True, chạy 1 lần rồi thoát chương trình luôn
 if __name__ == "__main__":
