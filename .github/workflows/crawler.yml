@@ -2,8 +2,10 @@ name: Auto Bus Crawler
 
 on:
   schedule:
-    # Chạy tự động mỗi 30 phút, từ 23h đêm đến 13h chiều (UTC), tức 6h sáng đến 20h tối (Việt Nam)
-    - cron: '*/30 23,0-13 * * *'  
+    # Lịch 1: Chạy từ 7h sáng đến 20h30 tối VN (0h - 13h UTC)
+    - cron: '*/30 0-13 * * *'
+    # Lịch 2: Chạy lúc 6h sáng và 6h30 sáng VN (23h UTC hôm trước)
+    - cron: '*/30 23 * * *'  
   # Cho phép bấm nút chạy bằng tay trên web GitHub (rất tiện để test)
   workflow_dispatch: 
 
