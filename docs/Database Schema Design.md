@@ -5,6 +5,7 @@ Lưu trữ vận tốc tức thời cào từ API xe buýt.
 ```json
 {
   "timestamp": { "$date": "2026-05-09T06:31:36.429Z" },
+  "from_stop_id": "311",
   "next_stop_id": "312",
   "speed_ms": 4.89,
   "distance_to_next_stop": 150, 
