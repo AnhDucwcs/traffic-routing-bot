@@ -1,11 +1,7 @@
 from pathlib import Path
 import sys
-
 from pymongo import MongoClient
 import matplotlib.pyplot as plt
-
-sys.path.append(str(Path(__file__).resolve().parents[1]))
-
 from app.core.config import settings
 
 # 1. Kết nối Database

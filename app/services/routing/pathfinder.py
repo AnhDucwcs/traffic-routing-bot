@@ -3,7 +3,7 @@ import osmnx as ox
 import asyncio
 import math
 from pyproj import Transformer
-from shapely import coordinates
+from app.core.logger import logger
 
 def calc_euclidean(u, v, graph):
     x1, y1 = graph.nodes[u]['x'], graph.nodes[u]['y']
@@ -22,10 +22,10 @@ async def find_shortest_path(graph, start_lat: float, start_lng: float, end_lat:
     # Find nearest nodes in the graph to the start and end coordinates
     start_node = ox.distance.nearest_nodes(graph, X=start_x, Y=start_y)
     end_node = ox.distance.nearest_nodes(graph, X=end_x, Y=end_y)
-    print(f"Start node: {start_node}, End node: {end_node}")
+    logger.info(f"Start node: {start_node}, End node: {end_node}")
 
     if start_node == end_node:
-        print("Start and end nodes are the same. No path needed.")
+        logger.info("Start and end nodes are the same. No path needed.")
         return []
 
     # Since A* in networkx expects a heuristic function with signature heuristic(u, v), we use a lambda to pass the graph
@@ -38,10 +38,10 @@ async def find_shortest_path(graph, start_lat: float, start_lng: float, end_lat:
         )
         return path
     except nx.NetworkXNoPath:
-        print("No path found between the specified nodes.")
+        logger.info("No path found between the specified nodes.")
         return []
     except Exception as e:
-        print(f"Lỗi: {e}")
+        logger.exception(f"Lỗi: {e}")
         return []
     
 def generate_google_maps_url(graph, path):
@@ -65,7 +65,7 @@ def generate_google_maps_url(graph, path):
             waypoints_coords.append(f"{lat},{lng}")
     
     waypoints_str = "|".join(waypoints_coords)
-    print(f"Generated Google Maps URL with start: ({start_lat}, {start_lng}), end: ({end_lat}, {end_lng})")
+    logger.info(f"Generated Google Maps URL with start: ({start_lat}, {start_lng}), end: ({end_lat}, {end_lng})")
     
     url = f"https://www.google.com/maps/dir/?api=1&origin={start_lat},{start_lng}&destination={end_lat},{end_lng}"
     if waypoints_str:

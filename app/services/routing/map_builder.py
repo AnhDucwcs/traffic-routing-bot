@@ -1,9 +1,10 @@
 import time
 import pickle
 from pathlib import Path
+from app.core.logger import logger
 
 def load_routing_graph():
-    print("Loading routing graph from disk...")
+    logger.info("Loading routing graph from disk...")
     start_time = time.perf_counter()
     
     curent_dir = Path(__file__).resolve().parent
@@ -15,8 +16,8 @@ def load_routing_graph():
     
     with open(graph_path, "rb") as f:
         routing_graph = pickle.load(f)
-        print(f"Routing graph loaded with {len(routing_graph.nodes)} nodes and {len(routing_graph.edges)} edges.")
+        logger.info(f"Routing graph loaded with {len(routing_graph.nodes)} nodes and {len(routing_graph.edges)} edges.")
     
     end_time = time.perf_counter()
-    print(f"Routing graph loaded in {end_time - start_time:.2f} seconds.")
+    logger.info(f"Routing graph loaded in {end_time - start_time:.2f} seconds.")
     return routing_graph

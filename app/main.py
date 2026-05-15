@@ -1,17 +1,59 @@
+import asyncio
 import fastapi
-from contextlib import asynccontextmanager
+from loguru import logger
 from app.api.routes import router
 from app.core.config import settings
+from app.core.logger import setup_logging
 from app.services.routing.map_builder import load_routing_graph
+from app.services.telegram_bot import TelegramBot
+from app.services.crawler.bus_crawler import BusCrawler
+from app.services.crawler.scheduler import CrawlerScheduler
+from app.services.routing.service import routing_service
+from app.core.state import init_app_state, shutdown_app_state
+
+setup_logging()
+
 
 async def lifespan(app: fastapi.FastAPI):
+    logger.info("Đang nạp Bản đồ vào RAM...")
     app.state.graph = load_routing_graph()
-    app.state.user_sessions = {}
+
+    # Initialize shared application state (user sessions + locks)
+    init_app_state(app, maxsize=10000, ttl=300)
+
+    # Create service instances and attach to app.state for DI
+    app.state.bot = TelegramBot()
+    app.state.routing_service = routing_service
+    app.state.crawler = BusCrawler()
+    # Wire dependencies into bot instance
+    try:
+        app.state.bot.routing_service = app.state.routing_service
+        app.state.bot.user_session_locks = app.state.user_session_locks
+    except Exception:
+        pass
+
+    # Start crawler scheduler
+    app.state.crawler_scheduler = CrawlerScheduler(app.state.crawler)
+    app.state.crawler_scheduler.start()
 
     yield
-    
-    print("Shutting down application...")
+
+    logger.info("Shutting down application...")
+
+    # Stop crawler scheduler and cleanup
+    try:
+        await app.state.crawler_scheduler.stop()
+    except Exception:
+        pass
+
+    try:
+        await app.state.bot.session.aclose()
+    except Exception:
+        pass
+
+    shutdown_app_state(app)
     del app.state.graph
+
 
 app = fastapi.FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 app.include_router(router)
