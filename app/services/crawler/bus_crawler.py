@@ -1,15 +1,14 @@
 import asyncio
-import queue
 import certifi
 import datetime
 import httpx
 import json
 import time
 from numpy import random
-from tqdm.asyncio import tqdm
 from pathlib import Path
 from pymongo import MongoClient
 from app.core.config import settings
+from app.core.logger import logger
 
 class BusCrawler:
     def __init__(self):
@@ -26,7 +25,7 @@ class BusCrawler:
             response.raise_for_status()  # Raise an exception for HTTP errors
             data = response.json()
         except httpx.HTTPError as e:
-            print(f"Lỗi khi gọi API xe buýt: {e}")
+            logger.exception(f"Lỗi khi gọi API xe buýt: {e}")
             return None
         
         if not data:
@@ -38,12 +37,11 @@ class BusCrawler:
             base_d = data[0]["arrs"][0]["d"]
             base_t = data[0]["arrs"][0]["t"]
         except IndexError:
-            print("There are no upcoming buses for base stop. Skipping!")
+            logger.info("Không có dữ liệu arrs cho trạm này.")
             return None
         
         for i in range(1, len(data)):
             if len(data[i]["arrs"]) == 0:
-                print(f"There are no upcoming buses for stop {i}. Skipping!")
                 continue
             
             curent_d = data[i]["arrs"][0]["d"]
@@ -53,7 +51,7 @@ class BusCrawler:
             delta_t = curent_t - base_t
             
             if delta_d <= 0 or delta_t <= 0:
-                print(f"Invalid data for stop {i}. Skipping!")
+                logger.info(f"Dữ liệu không hợp lệ cho trạm {i}.")
                 continue
             
             v_ms = delta_d / delta_t
@@ -77,9 +75,7 @@ class BusCrawler:
 
                 if response.status_code == 200:
                     data = response.json()
-                else:
-                    tqdm.write(f"[Radar] Trạm {stop_id} bị từ chối! Mã lỗi: {response.status_code}")
-                    
+
                 if isinstance(data, list):
                     for route in data:
                         route_id = route.get("r")
@@ -87,14 +83,14 @@ class BusCrawler:
                         active_buses = route.get("arrs", [])
                         
                         if (route_id is not None) and (var_id is not None) and len(active_buses) > 0:
-                            # PHÁT HIỆN MỤC TIÊU! Ném vào Queue cho anh lính tỉa
+                            # Nếu trạm này có xe buýt nào đang chuẩn bị tới, thì nhét thông tin vào Queue để Lính Tỉa bắn tiếp
                             await queue.put({
                                 "route_id": str(route_id),
                                 "variation_id": str(var_id),
                                 "stop_id": str(stop_id)
                             })
             except Exception as e:
-                tqdm.write(f"[Radar] Lỗi khi quét trạm {stop_id}: {type(e).__name__} - {str(e)}")
+                logger.exception(f"[Radar] Lỗi khi quét trạm {stop_id}: {type(e).__name__} - {str(e)}")
                 pass # Nuốt lỗi để radar không bị sập khi quét trạm khác
                 
             finally:
@@ -116,7 +112,6 @@ class BusCrawler:
                 if response.status_code == 200:
                     data = response.json()
                     if not data or not data[0].get("arrs"):
-                        tqdm.write(f"[{worker_id}] Trạm {stop_id} không có dữ liệu arrs")
                         continue
                     if not data[0].get("arrs"):
                         continue
@@ -155,12 +150,12 @@ class BusCrawler:
                             pass
                             
             except Exception as e:
-                tqdm.write(f"[Lính Tỉa {worker_id}] Bắn trượt mục tiêu {route_id}-{var_id}-{stop_id}: {type(e).__name__} - {str(e)}")
-                
+                logger.exception(f"[Lính Tỉa {worker_id}] Bắn trượt mục tiêu {route_id}-{var_id}-{stop_id}: {type(e).__name__} - {str(e)}")
+
             finally:
                 queue.task_done()
     async def run_campaign(self):
-        tqdm.write(f"BẮT ĐẦU CHIẾN DỊCH QUÉT LÚC: {datetime.datetime.now()}")
+        logger.info(f"BẮT ĐẦU CHIẾN DỊCH QUÉT LÚC: {datetime.datetime.now()}")
         start_time = time.perf_counter()
         
         queue = asyncio.Queue()
@@ -169,13 +164,13 @@ class BusCrawler:
         
         try:
             curent_dir = Path(__file__).resolve().parent
-            src_dir = curent_dir.parent.parent.parent
-            file_fath = src_dir / "data" / "master_stops.json"
+            base_dir = curent_dir.parent.parent.parent
+            file_fath = base_dir / "data" / "master_stops.json"
             with open(file_fath, "r", encoding="utf-8") as f:
                 stops_data = json.load(f)
                 stop_ids = [str(s["StopId"]) for s in stops_data if "StopId" in s]
         except Exception as e:
-            tqdm.write(f"Lỗi đọc file: {e}")
+            logger.exception(f"Lỗi đọc file: {e}")
             return
             
         headers = {
@@ -205,24 +200,34 @@ class BusCrawler:
 
         async with httpx.AsyncClient(**client_kwargs) as http_client:
             consumers = [asyncio.create_task(self.consumer_api_2(i, queue, http_client, all_results)) for i in range(20)]
-                
-            tqdm.write(f"Tung {len(stop_ids)} Radar...")
-            producers = [self.producer_api_1(sid, queue, semaphore, http_client) for sid in stop_ids]
-            await tqdm.gather(*producers)
+            total_stops = len(stop_ids)
+            completed = 0
+            next_log_pct = 10.0    
+            logger.info(f"Tung {len(stop_ids)} Radar...")
+            producer_tasks = [asyncio.create_task(self.producer_api_1(sid, queue, semaphore, http_client)) for sid in stop_ids]
+            for task in asyncio.as_completed(producer_tasks):
+                await task
+                completed += 1
+                progress_pct = (completed / total_stops) * 100 if total_stops else 100.0
 
-            await queue.join()
+                # Log khi đạt mỗi mốc 10% hoặc khi hoàn tất trạm cuối
+                if progress_pct >= next_log_pct or completed == total_stops:
+                    logger.info(
+                        f"Tiến độ quét trạm: {completed}/{total_stops} ({progress_pct:.1f}%)"
+                    )
+                    while next_log_pct <= progress_pct and next_log_pct < 100:
+                        next_log_pct += 10.0
             
+            await queue.join() # Đợi cho đến khi tất cả các mục tiêu trong Queue được xử lý xong
             for c in consumers:
                 c.cancel()
                 
         if all_results:
             self.collection.insert_many(all_results)
-            tqdm.write(f"Đã đổ {len(all_results)} kết quả vào MongoDB!")
+            logger.info(f"Đã đổ {len(all_results)} kết quả vào MongoDB!")
         else:
-            tqdm.write("Không thu hoạch được dữ liệu.")
+            logger.info("Không thu hoạch được dữ liệu.")
 
         end_time = time.perf_counter()
-        tqdm.write(f"Thời gian thực hiện chiến dịch: {end_time - start_time:.2f} giây")
+        logger.info(f"Thời gian thực hiện chiến dịch: {end_time - start_time:.2f} giây")
         return
-
-crawler = BusCrawler()

@@ -1,58 +1,59 @@
 import asyncio
-from datetime import datetime
-from cachetools import TTLCache
 import fastapi
-from contextlib import asynccontextmanager
-
-import pytz
+from loguru import logger
 from app.api.routes import router
 from app.core.config import settings
+from app.core.logger import setup_logging
 from app.services.routing.map_builder import load_routing_graph
-from app.services.crawler.bus_crawler import crawler
+from app.services.telegram_bot import TelegramBot
+from app.services.crawler.bus_crawler import BusCrawler
+from app.services.crawler.scheduler import CrawlerScheduler
+from app.services.routing.service import routing_service
+from app.core.state import init_app_state, shutdown_app_state
 
-async def lifespan(app: fastapi.FastAPI):   
-    print("Đang nạp Bản đồ vào RAM...")
+setup_logging()
+
+
+async def lifespan(app: fastapi.FastAPI):
+    logger.info("Đang nạp Bản đồ vào RAM...")
     app.state.graph = load_routing_graph()
-    app.state.user_sessions = TTLCache(maxsize=10000, ttl=300)  # Cache with max 10000 items, each valid for 5 minutes
-    
-    print("Đang khởi động Crawler chạy ngầm...")
-    crawler_task = asyncio.create_task(crawler_background_task())
+
+    # Initialize shared application state (user sessions + locks)
+    init_app_state(app, maxsize=10000, ttl=300)
+
+    # Create service instances and attach to app.state for DI
+    app.state.bot = TelegramBot()
+    app.state.routing_service = routing_service
+    app.state.crawler = BusCrawler()
+    # Wire dependencies into bot instance
+    try:
+        app.state.bot.routing_service = app.state.routing_service
+        app.state.bot.user_session_locks = app.state.user_session_locks
+    except Exception:
+        pass
+
+    # Start crawler scheduler
+    app.state.crawler_scheduler = CrawlerScheduler(app.state.crawler)
+    app.state.crawler_scheduler.start()
 
     yield
-    
-    print("Shutting down application...")
-    
-    crawler_task.cancel()
-    del app.state.graph
-    app.state.user_sessions.clear()
 
-async def crawler_background_task():   
-    vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+    logger.info("Shutting down application...")
+
+    # Stop crawler scheduler and cleanup
     try:
-        while True:
-            now_vn = datetime.now(vn_tz)
-            current_hour = now_vn.hour
-            should_crawl = False
-            
-            if 22 <= current_hour <= 23 or 0 <= current_hour < 4:
-                sleep_time = 3600 # short sleep for heartbeat during all-night hours
-            elif current_hour in [6, 7, 8, 16, 17, 18]:
-                sleep_time = 300 # 5 minutes during rush hours
-                should_crawl = True
-            else:
-                sleep_time = 1200 # 20 minutes during off-peak hours
-                should_crawl = True
-            
-            if should_crawl:
-                try: await crawler.run_campaign()
-                except Exception as e:
-                    print(f"❌ Lỗi mẻ cào này: {e}. Vẫn sống, đợi mẻ sau cào tiếp!")
-            
-            await asyncio.sleep(sleep_time)
-            
-    except asyncio.CancelledError:
-        print("🛑 Nhận lệnh Shutdown! Đã dừng crawler an toàn.")
-        # Dọn dẹp tài nguyên của crawler nếu cần
+        await app.state.crawler_scheduler.stop()
+    except Exception:
+        pass
+
+    try:
+        await app.state.bot.session.aclose()
+    except Exception:
+        pass
+
+    shutdown_app_state(app)
+    del app.state.graph
+
 
 app = fastapi.FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 app.include_router(router)
