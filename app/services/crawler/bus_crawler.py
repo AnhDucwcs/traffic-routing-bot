@@ -50,13 +50,13 @@ class BusCrawler:
             curent_t = data[i]["arrs"][0]["t"]
             
             delta_d = curent_d - base_d
-            detal_t = curent_t - base_t
+            delta_t = curent_t - base_t
             
-            if detal_d <= 0 or detal_t <= 0:
+            if delta_d <= 0 or delta_t <= 0:
                 print(f"Invalid data for stop {i}. Skipping!")
                 continue
             
-            v_ms = detal_d / detal_t
+            v_ms = delta_d / delta_t
             results.append({"stop": data[i]["sN"], "speed_ms": v_ms})
 
             base_d = curent_d
@@ -124,6 +124,7 @@ class BusCrawler:
                         try:
                             base_d = data[0]["arrs"][0]["d"]
                             base_t = data[0]["arrs"][0]["t"]
+                            base_stop_id = str(data[0].get("s") or "")
                             crawl_time = datetime.datetime.now()
 
                             for i in range(1, len(data)):
@@ -140,6 +141,7 @@ class BusCrawler:
                                 if delta_d > 0 and delta_t > 0:
                                     v_ms = delta_d / delta_t
                                     all_results.append({
+                                        "from_stop_id": base_stop_id,
                                         "next_stop_id": next_stop_id,
                                         "distance_to_next_stop": curent_d,
                                         "speed_ms": round(v_ms, 2),
@@ -148,6 +150,7 @@ class BusCrawler:
                                 
                                 base_d = curent_d
                                 base_t = curent_t
+                                base_stop_id = next_stop_id
                         except (IndexError, KeyError):
                             pass
                             
