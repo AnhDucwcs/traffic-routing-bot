@@ -24,34 +24,42 @@ class BusCrawler:
         Nếu có, nhét [route_id, variation_id, stop_id] vào Hộp thư (Queue).
         """
         async with semaphore:  # Bị chặn bởi Semaphore (chỉ cho phép 20 radar quét cùng lúc)
-            try:
-                url_api_1 = f"https://apicms.ebms.vn/prediction/predictbystopid/{stop_id}"
-                
-                response = await http_client.get(url_api_1)
+            for attempt in range(3):
+                try:
+                    url_api_1 = f"https://apicms.ebms.vn/prediction/predictbystopid/{stop_id}"
+                    
+                    response = await http_client.get(url_api_1, timeout=10.0)
+                    
+                    response.raise_for_status()
 
-                if response.status_code == 200:
                     data = response.json()
 
-                if isinstance(data, list):
-                    for route in data:
-                        route_id = route.get("r")
-                        var_id = route.get("v")
-                        active_buses = route.get("arrs", [])
-                        
-                        if (route_id is not None) and (var_id is not None) and len(active_buses) > 0:
-                            # Nếu trạm này có xe buýt nào đang chuẩn bị tới, thì nhét thông tin vào Queue để Lính Tỉa bắn tiếp
-                            await queue.put({
-                                "route_id": str(route_id),
-                                "variation_id": str(var_id),
-                                "stop_id": str(stop_id)
-                            })
-            except Exception as e:
-                logger.exception(f"[Radar] Lỗi khi quét trạm {stop_id}: {type(e).__name__} - {str(e)}")
-                pass # Nuốt lỗi để radar không bị sập khi quét trạm khác
-                
-            finally:
-                # CHỐNG BAN IP: Radar quét xong phải nghỉ ngơi một chút trước khi chuyển trạm
-                await asyncio.sleep(random.uniform(0.1, 0.3))
+                    if isinstance(data, list):
+                        for route in data:
+                            route_id = route.get("r")
+                            var_id = route.get("v")
+                            active_buses = route.get("arrs", [])
+                            
+                            if (route_id is not None) and (var_id is not None) and len(active_buses) > 0:
+                                # Nếu trạm này có xe buýt nào đang chuẩn bị tới, thì nhét thông tin vào Queue để Lính Tỉa bắn tiếp
+                                await queue.put({
+                                    "route_id": str(route_id),
+                                    "variation_id": str(var_id),
+                                    "stop_id": str(stop_id)
+                                })
+                    break  # Nếu thành công thì thoát vòng retry
+                except httpx.RemoteProtocolError:
+                    logger.warning(f"Trạm {stop_id}: Server cắt kết nối HTTP/2 (Lần {attempt + 1}/3). Đợi 1s...")
+                    await asyncio.sleep(1)
+                except httpx.HTTPError as e:
+                    logger.warning(f"Trạm {stop_id}: Lỗi HTTP {e.response.status_code if e.response else 'N/A'} (Lần {attempt + 1}/3). Đợi 1s...")
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    logger.exception(f"[Radar] Lỗi khi quét trạm {stop_id}: {type(e).__name__} - {str(e)}")
+                    break  # Với lỗi khác, không cần retry, thoát luôn
+                    
+            # CHỐNG BAN IP: Radar quét xong phải nghỉ ngơi một chút trước khi chuyển trạm
+            await asyncio.sleep(random.uniform(0.1, 0.3))
     async def consumer_api_2(self, worker_id, queue, http_client, all_results):
         while True:
             # Lấy mục tiêu từ Hộp thư (Nếu hộp thư trống, lính sẽ tự động đứng chờ)

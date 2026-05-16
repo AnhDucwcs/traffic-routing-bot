@@ -4,6 +4,10 @@ from app.models import request_models
 
 router = APIRouter()
 
+@router.get("/")
+async def root():
+    return {"message": "Welcome to the Traffic Routing Bot API!"}
+
 @router.get("/health-check")
 async def health_check():
     return {"status": "healthy"}
