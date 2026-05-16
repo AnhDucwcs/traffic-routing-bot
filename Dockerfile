@@ -1,5 +1,5 @@
 # 1. Chọn Base Image: Dùng bản slim để dung lượng nhẹ, khởi động nhanh
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # 2. Thiết lập biến môi trường
 # Ngăn Python tạo ra các file .pyc dư thừa và ép in log trực tiếp ra terminal
