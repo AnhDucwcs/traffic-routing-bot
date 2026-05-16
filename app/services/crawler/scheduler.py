@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+import gc
 import pytz
 from loguru import logger
 
@@ -30,6 +31,7 @@ class CrawlerScheduler:
                 if should_crawl:
                     try:
                         await self.crawler.run_campaign()
+                        gc.collect()
                     except Exception as e:
                         logger.exception(f"Lỗi lần cào dữ liệu này: {e}.")
 

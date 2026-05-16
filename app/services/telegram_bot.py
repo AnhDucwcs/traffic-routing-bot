@@ -1,6 +1,7 @@
 import httpx
 from app.core.config import settings
 from app.models.user_session import UserSession
+from app.core.logger import logger
 
 class TelegramBot:
     def __init__(self):
@@ -15,8 +16,15 @@ class TelegramBot:
             "chat_id": chat_id,
             "text": text
         }
-        await self.session.post(url, json=payload)
-    
+        async with httpx.AsyncClient(timeout=30.0, trust_env=False, proxy=None) as client:
+            try:
+                response =await client.post(url, json=payload)
+                response.raise_for_status()
+                return True
+            except httpx.HTTPError as e:
+                logger.error(f"[TelegramBot] Lỗi mạng khi nhắn tin: {str(e)}")
+                return False
+
     def _parse_update(self, update):
         if update.message:
             chat_id = update.message.chat.id
@@ -31,9 +39,15 @@ class TelegramBot:
         return chat_id, text, location
     
     async def _handle_route_command(self, chat_id, user_sessions):
-        user_sessions[chat_id] = UserSession(chat_id=chat_id, state="awaiting_start")
-        await self.send_message(chat_id, "Please send your starting location.")
-        return {"status":"awaiting_start"}
+        try:
+            user_sessions[chat_id] = UserSession(chat_id=chat_id, state="awaiting_start")
+            success = await self.send_message(chat_id, "Please send your starting location.")
+            if not success:
+                logger.error(f"Failed to send message to chat_id {chat_id} after /route command")
+            return {"status":"awaiting_start"}
+        except Exception as e:
+            logger.error(f"Error handling /route command for chat_id {chat_id}: {str(e)}")
+            return {"status": "error"}
     
     async def _handle_location(self, chat_id, loc, user_sessions, graph):
         # Use per-chat lock if available to avoid race conditions
@@ -44,26 +58,30 @@ class TelegramBot:
             lock = None
 
         async def _process():
-            sess = user_sessions.get(chat_id)
-            if not sess:
-                await self.send_message(chat_id, "Please enter '/route' to start...")
-                return {"status":"no_session"}
-            if sess.state == "awaiting_start":
-                sess.start_lat = loc.latitude
-                sess.start_lng = loc.longitude
-                sess.state = "awaiting_end"
-                await self.send_message(chat_id, "Starting location received. Please send your destination location.")
-                return {"status":"awaiting_end"}
-            if sess.state == "awaiting_end":
-                end_lat, end_lng = loc.latitude, loc.longitude
-                # route finding handled by routing_service
-                path = await self.routing_service.find_path(graph, sess.start_lat, sess.start_lng, end_lat, end_lng)
-                try:
-                    del user_sessions[chat_id]
-                    del self.user_session_locks[chat_id]
-                except KeyError:
-                    pass
-                return await self._send_route_result(chat_id, path, graph)
+            try:
+                sess = user_sessions.get(chat_id)
+                if not sess:
+                    await self.send_message(chat_id, "Please enter '/route' to start...")
+                    return {"status":"no_session"}
+                if sess.state == "awaiting_start":
+                    sess.start_lat = loc.latitude
+                    sess.start_lng = loc.longitude
+                    sess.state = "awaiting_end"
+                    await self.send_message(chat_id, "Starting location received. Please send your destination location.")
+                    return {"status":"awaiting_end"}
+                if sess.state == "awaiting_end":
+                    end_lat, end_lng = loc.latitude, loc.longitude
+                    # route finding handled by routing_service
+                    path = await self.routing_service.find_path(graph, sess.start_lat, sess.start_lng, end_lat, end_lng)
+                    try:
+                        del user_sessions[chat_id]
+                        del self.user_session_locks[chat_id]
+                    except KeyError:
+                        pass
+                    return await self._send_route_result(chat_id, path, graph)
+            except Exception as e:
+                logger.error(f"Error processing location for chat_id {chat_id}: {str(e)}")
+                return {"status": "error"}
 
         if lock is not None:
             async with lock:
@@ -73,24 +91,37 @@ class TelegramBot:
 
     async def _send_route_result(self, chat_id, path, graph):
         if not path:
-            await self.send_message(chat_id, "Sorry, I couldn't find a route between those locations.")
-            return {"status": "no route found"}
+            try:
+                await self.send_message(chat_id, "Sorry, I couldn't find a route between those locations.")
+                return {"status": "no route found"}
+            except Exception as e:
+                logger.error(f"Error sending no route message to chat_id {chat_id}: {str(e)}")
+                return {"status": "error"}
 
         geojson_route = None
         try:
             geojson_route = self.routing_service.to_geojson(graph, path)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error generating GeoJSON for chat_id {chat_id}: {str(e)}")
             geojson_route = None
 
-        await self.send_message(chat_id, f"Route found with {len(path)} steps!")
+        try:
+            await self.send_message(chat_id, f"Route found with {len(path)} steps!")
+        except Exception as e:
+            logger.error(f"Error sending route found message to chat_id {chat_id}: {str(e)}")
+
         google_maps_url = None
         try:
             google_maps_url = self.routing_service.generate_google_maps_url(graph, path)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error generating Google Maps URL for chat_id {chat_id}: {str(e)}")
             google_maps_url = None
 
         if google_maps_url:
-            await self.send_message(chat_id, f"View the route on Google Maps: {google_maps_url}")
+            try:
+                await self.send_message(chat_id, f"View the route on Google Maps: {google_maps_url}")
+            except Exception as e:
+                logger.error(f"Error sending Google Maps URL to chat_id {chat_id}: {str(e)}")
 
         return {"status": "route found", "steps": len(path), "geojson": geojson_route}
     
