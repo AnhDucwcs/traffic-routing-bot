@@ -9,7 +9,7 @@ async def root():
     return {"message": "Welcome to the Traffic Routing Bot API!"}
 
 @router.route("/health-check", methods=["GET", "HEAD"])
-async def health_check():
+async def health_check(request: Request):
     return {"status": "healthy"}
 
 @router.post("/webhook/telegram")
