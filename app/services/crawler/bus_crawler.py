@@ -28,7 +28,12 @@ class BusCrawler:
                 try:
                     url_api_1 = f"https://apicms.ebms.vn/prediction/predictbystopid/{stop_id}"
                     
-                    timeout_config = httpx.Timeout(connect=5.0, read=4.0)
+                    timeout_config = httpx.Timeout(
+                        connect=5.0, 
+                        read=4.0, 
+                        write=5.0, 
+                        pool=5.0
+                    )
                     response = await http_client.get(url_api_1, timeout=timeout_config)
                     
                     response.raise_for_status()
