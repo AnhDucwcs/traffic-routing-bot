@@ -15,8 +15,9 @@ class TelegramBot:
             "chat_id": chat_id,
             "text": text
         }
-        await self.session.post(url, json=payload)
-    
+        async with httpx.AsyncClient(timeout=30.0, trust_env=False, proxy=None) as client:
+            await client.post(url, json=payload)
+
     def _parse_update(self, update):
         if update.message:
             chat_id = update.message.chat.id

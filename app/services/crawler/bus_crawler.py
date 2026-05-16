@@ -55,7 +55,7 @@ class BusCrawler:
                     logger.warning(f"Trạm {stop_id}: Lỗi HTTP {e.response.status_code if e.response else 'N/A'} (Lần {attempt + 1}/3). Đợi 1s...")
                     await asyncio.sleep(1)
                 except Exception as e:
-                    logger.exception(f"[Radar] Lỗi khi quét trạm {stop_id}: {type(e).__name__} - {str(e)}")
+                    logger.error(f"[Radar] Lỗi khi quét trạm {stop_id}: {type(e).__name__} - {str(e)}")
                     break  # Với lỗi khác, không cần retry, thoát luôn
                     
             # CHỐNG BAN IP: Radar quét xong phải nghỉ ngơi một chút trước khi chuyển trạm
@@ -114,7 +114,7 @@ class BusCrawler:
                             pass
                             
             except Exception as e:
-                logger.exception(f"[Lính Tỉa {worker_id}] Bắn trượt mục tiêu (route_id={route_id}, var_id={var_id}, stop_id={stop_id})")
+                logger.error(f"[Lính Tỉa {worker_id}] Bắn trượt mục tiêu (route_id={route_id}, var_id={var_id}, stop_id={stop_id})")
 
             finally:
                 queue.task_done()
@@ -134,7 +134,7 @@ class BusCrawler:
                 stops_data = json.load(f)
                 stop_ids = [str(s["StopId"]) for s in stops_data if "StopId" in s]
         except Exception as e:
-            logger.exception(f"Lỗi đọc file: {e}")
+            logger.error(f"Lỗi đọc file: {e}")
             return
             
         headers = {
