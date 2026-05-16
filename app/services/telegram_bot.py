@@ -18,9 +18,12 @@ class TelegramBot:
         }
         async with httpx.AsyncClient(timeout=30.0, trust_env=False, proxy=None) as client:
             try:
-                await client.post(url, json=payload)
+                response =await client.post(url, json=payload)
+                response.raise_for_status()
+                return True
             except httpx.HTTPError as e:
                 logger.error(f"[TelegramBot] Lỗi mạng khi nhắn tin: {str(e)}")
+                return False
 
     def _parse_update(self, update):
         if update.message:
@@ -38,7 +41,9 @@ class TelegramBot:
     async def _handle_route_command(self, chat_id, user_sessions):
         try:
             user_sessions[chat_id] = UserSession(chat_id=chat_id, state="awaiting_start")
-            await self.send_message(chat_id, "Please send your starting location.")
+            success = await self.send_message(chat_id, "Please send your starting location.")
+            if not success:
+                logger.error(f"Failed to send message to chat_id {chat_id} after /route command")
             return {"status":"awaiting_start"}
         except Exception as e:
             logger.error(f"Error handling /route command for chat_id {chat_id}: {str(e)}")
