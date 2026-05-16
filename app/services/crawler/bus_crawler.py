@@ -28,7 +28,8 @@ class BusCrawler:
                 try:
                     url_api_1 = f"https://apicms.ebms.vn/prediction/predictbystopid/{stop_id}"
                     
-                    response = await http_client.get(url_api_1, timeout=10.0)
+                    timeout_config = httpx.Timeout(connect=5.0, read=4.0)
+                    response = await http_client.get(url_api_1, timeout=timeout_config)
                     
                     response.raise_for_status()
 
@@ -48,6 +49,9 @@ class BusCrawler:
                                     "stop_id": str(stop_id)
                                 })
                     break  # Nếu thành công thì thoát vòng retry
+                except httpx.ReadTimeout:
+                    logger.warning(f"Trạm {stop_id}: Proxy phản hồi quá chậm (ReadTimeout Lần {attempt + 1}/3).")
+                    await asyncio.sleep(1)
                 except httpx.RemoteProtocolError:
                     logger.warning(f"Trạm {stop_id}: Server cắt kết nối HTTP/2 (Lần {attempt + 1}/3). Đợi 1s...")
                     await asyncio.sleep(1)
