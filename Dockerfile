@@ -20,6 +20,10 @@ RUN pip install --no-cache-dir --upgrade -r /traffic_routing_bot/requirements.tx
 # Hugging Face yêu cầu ứng dụng phải chạy dưới một user thông thường (UID 1000), không được dùng quyền root.
 RUN useradd -m -u 1000 user
 USER user
+# Chuyển quyền sở hữu toàn bộ thư mục làm việc cho user này
+RUN chown -R user:user /traffic_routing_bot
+# Chuyển sang chạy bằng user vừa tạo
+USER user
 
 # 6. Copy toàn bộ mã nguồn (bao gồm file routing_brain.pkl) vào container
 COPY --chown=user . /traffic_routing_bot
