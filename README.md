@@ -1,3 +1,12 @@
+---
+title: AI Traffic Routing Bot
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
+
 # Traffic Routing Bot
 
 An AI-powered bot for smart traffic routing and optimization.
