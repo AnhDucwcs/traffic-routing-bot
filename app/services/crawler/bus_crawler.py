@@ -13,54 +13,10 @@ from app.core.logger import logger
 class BusCrawler:
     def __init__(self):
         self.session = httpx.AsyncClient(timeout=10.0) 
-        self.base_url = settings.BUS_API_BASE_URL
         self.client = MongoClient(settings.MONGO_URI, tlsCAFile=certifi.where())
         self.db = self.client["traffic_db"]
         self.collection = self.db["bus_speeds"]
 
-    async def get_next_stops_prediction(self, route_id: str, direction: int, stop_id: str, limit: int = 3):
-        url = f"{self.base_url}/prediction/{route_id}/{direction}/{stop_id}/predictnextstops/{limit}"
-        try:
-            response = await self.session.get(url)
-            response.raise_for_status()  # Raise an exception for HTTP errors
-            data = response.json()
-        except httpx.HTTPError as e:
-            logger.exception(f"Lỗi khi gọi API xe buýt: {e}")
-            return None
-        
-        if not data:
-            return None
-        
-        results = []
-        
-        try:
-            base_d = data[0]["arrs"][0]["d"]
-            base_t = data[0]["arrs"][0]["t"]
-        except IndexError:
-            logger.info("Không có dữ liệu arrs cho trạm này.")
-            return None
-        
-        for i in range(1, len(data)):
-            if len(data[i]["arrs"]) == 0:
-                continue
-            
-            curent_d = data[i]["arrs"][0]["d"]
-            curent_t = data[i]["arrs"][0]["t"]
-            
-            delta_d = curent_d - base_d
-            delta_t = curent_t - base_t
-            
-            if delta_d <= 0 or delta_t <= 0:
-                logger.info(f"Dữ liệu không hợp lệ cho trạm {i}.")
-                continue
-            
-            v_ms = delta_d / delta_t
-            results.append({"stop": data[i]["sN"], "speed_ms": v_ms})
-
-            base_d = curent_d
-            base_t = curent_t
-        
-        return results
 
     async def producer_api_1(self, stop_id, queue, semaphore, http_client):
         """

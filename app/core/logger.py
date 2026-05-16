@@ -16,8 +16,8 @@ def setup_logging():
         )
     logger.add(
         target_dir / "app.log", 
-        rotation="5 MB", 
-        retention="5", 
+        rotation="10 MB", 
+        retention=5, 
         encoding="utf-8", 
         enqueue=True, 
         backtrace=True,
