@@ -1,36 +1,38 @@
-# 1. Chọn Base Image: Dùng bản slim để dung lượng nhẹ, khởi động nhanh
+# 1. Chọn Base Image
 FROM python:3.11-slim
 
 # 2. Thiết lập biến môi trường
-# Ngăn Python tạo ra các file .pyc dư thừa và ép in log trực tiếp ra terminal
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# 3. Tạo thư mục làm việc trong container
-WORKDIR /traffic_routing_bot
-
-# (Tùy chọn) Cài đặt các thư viện lõi của Linux hệ điều hành nếu OSMnx/Geopandas yêu cầu
-# RUN apt-get update && apt-get install -y --no-install-recommends gcc libspatialindex-dev && rm -rf /var/lib/apt/lists/*
-
-# 4. Copy và cài đặt thư viện (Tận dụng Docker Cache)
-COPY ./requirements.txt /traffic_routing_bot/requirements.txt
-RUN apt-get update && apt-get install -y gcc build-essential && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir --upgrade -r /traffic_routing_bot/requirements.txt
-# 5. Thiết lập User cho Hugging Face (BẮT BUỘC)
-# Hugging Face yêu cầu ứng dụng phải chạy dưới một user thông thường (UID 1000), không được dùng quyền root.
+# 3. Tạo user với UID 1000 ngay từ đầu
 RUN useradd -m -u 1000 user
-USER user
-# Chuyển quyền sở hữu toàn bộ thư mục làm việc cho user này
-RUN chown -R user:user /traffic_routing_bot
-# Chuyển sang chạy bằng user vừa tạo
+
+# 4. Cài đặt các thư viện hệ thống (Chạy bằng quyền root)
+# Gộp chung gcc, build-essential và libspatialindex-dev (cần cho OSMnx)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    build-essential \
+    libspatialindex-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 5. Tạo thư mục làm việc và cấp luôn quyền cho user
+WORKDIR /traffic_routing_bot
+RUN chown user:user /traffic_routing_bot
+
+# 6. Copy và cài đặt thư viện Python
+# Cấp quyền user cho file requirements ngay khi copy vào
+COPY --chown=user:user ./requirements.txt /traffic_routing_bot/requirements.txt
+RUN pip install --no-cache-dir --upgrade -r /traffic_routing_bot/requirements.txt
+
+# 7. Copy toàn bộ mã nguồn (bao gồm file routing_brain.pkl) vào container
+COPY --chown=user:user . /traffic_routing_bot
+
+# 8. Chuyển xuống chạy bằng user vừa tạo (BẮT BUỘC cho Hugging Face Spaces)
 USER user
 
-# 6. Copy toàn bộ mã nguồn (bao gồm file routing_brain.pkl) vào container
-COPY --chown=user . /traffic_routing_bot
-
-# 7. Mở port (Hugging Face Spaces mặc định giao tiếp qua port 7860)
+# 9. Mở port
 EXPOSE 7860
 
-# 8. Lệnh khởi động Server FastAPI
-# Giả sử file chứa app FastAPI của bạn tên là main.py và biến khởi tạo là app
+# 10. Lệnh khởi động Server FastAPI
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1"]
