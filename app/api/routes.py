@@ -8,7 +8,7 @@ router = APIRouter()
 async def root():
     return {"message": "Welcome to the Traffic Routing Bot API!"}
 
-@router.get("/health-check")
+@router.route("/health-check", methods=["GET", "HEAD"])
 async def health_check():
     return {"status": "healthy"}
 
