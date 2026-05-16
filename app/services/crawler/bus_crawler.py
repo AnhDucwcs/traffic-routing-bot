@@ -114,7 +114,7 @@ class BusCrawler:
                             pass
                             
             except Exception as e:
-                logger.exception(f"[Lính Tỉa {worker_id}] Bắn trượt mục tiêu {route_id}-{var_id}-{stop_id}: {type(e).__name__} - {str(e)}")
+                logger.exception(f"[Lính Tỉa {worker_id}] Bắn trượt mục tiêu (route_id={route_id}, var_id={var_id}, stop_id={stop_id})")
 
             finally:
                 queue.task_done()
