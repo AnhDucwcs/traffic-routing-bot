@@ -14,6 +14,7 @@ WORKDIR /traffic_routing_bot
 
 # 4. Copy và cài đặt thư viện (Tận dụng Docker Cache)
 COPY ./requirements.txt /traffic_routing_bot/requirements.txt
+RUN apt-get update && apt-get install -y gcc build-essential && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir --upgrade -r /traffic_routing_bot/requirements.txt
 # 5. Thiết lập User cho Hugging Face (BẮT BUỘC)
 # Hugging Face yêu cầu ứng dụng phải chạy dưới một user thông thường (UID 1000), không được dùng quyền root.
