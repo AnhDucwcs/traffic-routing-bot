@@ -68,7 +68,7 @@ class TelegramBot:
                 logger.info(f"Started new routing session for chat_id {chat_id}")
             return {"status":"awaiting_start"}
         except Exception as e:
-            logger.error(f"Error handling /route command for chat_id {chat_id}: {str(e)}")
+            logger.exception(f"Error handling /route command for chat_id {chat_id}: {str(e)}")
             return {"status": "error"}
     
     async def _handle_location(self, chat_id, loc, user_sessions, graph):
@@ -106,7 +106,7 @@ class TelegramBot:
                         pass
                     return await self._send_route_result(chat_id, path, graph)
             except Exception as e:
-                logger.error(f"Error processing location for chat_id {chat_id}: {str(e)}")
+                logger.exception(f"Error processing location for chat_id {chat_id}: {str(e)}")
                 return {"status": "error"}
 
         if lock is not None:
