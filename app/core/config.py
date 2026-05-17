@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str
     MONGO_URI: str
     VN_PROXY: str
+    US_PROXY: str
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
         
 settings = Settings()
