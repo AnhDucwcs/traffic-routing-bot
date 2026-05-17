@@ -47,7 +47,7 @@ class TelegramBot:
                     logger.exception(f"Thất bại khi gửi tin nhắn đến chat_id {chat_id} sau 3 lần thử.")
         return False
     
-    def send_chat_action(self, chat_id: int, action: str = "Đang tính toán ..."):
+    async def send_chat_action(self, chat_id: int, action: str = "Đang tính toán ..."):
         url = f"{self.api_url}/sendChatAction"
         payload = {
             "chat_id": chat_id,
@@ -148,7 +148,7 @@ class TelegramBot:
         except Exception as e:
             logger.exception(f"Error generating GeoJSON for chat_id {chat_id}: ")
             geojson_route = None
-        self.send_chat_action(chat_id)
+        await self.send_chat_action(chat_id)
         google_maps_url = None
         try:
             google_maps_url = self.routing_service.generate_google_maps_url(graph, path)
