@@ -127,6 +127,7 @@ class BusCrawler:
 
             finally:
                 queue.task_done()
+                await asyncio.sleep(random.uniform(0.01, 0.05))  # Giúp giảm tải cho API và tránh bị ban IP
     async def run_campaign(self):
         logger.info(f"BẮT ĐẦU CHIẾN DỊCH QUÉT LÚC: {datetime.datetime.now()}")
         start_time = time.perf_counter()
