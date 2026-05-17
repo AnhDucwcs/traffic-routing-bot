@@ -46,6 +46,21 @@ class TelegramBot:
                 else: 
                     logger.exception(f"Thất bại khi gửi tin nhắn đến chat_id {chat_id} sau 3 lần thử.")
         return False
+    
+    def send_chat_action(self, chat_id: int, action: str = "Đang tính toán ..."):
+        url = f"{self.api_url}/sendChatAction"
+        payload = {
+            "chat_id": chat_id,
+            "action": action
+        }
+        # Không cần retry cho sendChatAction vì nó không ảnh hưởng đến trải nghiệm người dùng nếu thất bại, chỉ log lỗi nếu có
+        try:
+            response = self.session.post(url, json=payload)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.exception(f"[TelegramBot] Lỗi từ máy chủ Telegram khi gửi chat action (Status {e.response.status_code})")
+        except httpx.RequestError as e:
+            logger.exception(f"[TelegramBot] Lỗi khi gửi chat action: ")
 
     def _parse_update(self, update):
         if update.message:
@@ -133,13 +148,7 @@ class TelegramBot:
         except Exception as e:
             logger.exception(f"Error generating GeoJSON for chat_id {chat_id}: ")
             geojson_route = None
-
-        success = await self.send_message(chat_id, f"Route found with {len(path)} steps!")
-        if not success:
-            logger.error(f"Error sending route found message to chat_id {chat_id}: ")
-        else:
-            logger.info(f"Route found with {len(path)} steps for chat_id {chat_id}")
-
+        self.send_chat_action(chat_id)
         google_maps_url = None
         try:
             google_maps_url = self.routing_service.generate_google_maps_url(graph, path)
@@ -148,7 +157,7 @@ class TelegramBot:
             google_maps_url = None
 
         if google_maps_url:
-            success = await self.send_message(chat_id, f"View the route on Google Maps: {google_maps_url}")
+            success = await self.send_message(chat_id, f"Route found with {len(path)} steps! \n\nView the route on Google Maps: {google_maps_url}")
             if not success:
                 logger.error(f"Error sending Google Maps URL to chat_id {chat_id}")
             else:
