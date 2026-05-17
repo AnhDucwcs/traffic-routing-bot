@@ -127,6 +127,7 @@ class BusCrawler:
 
             finally:
                 queue.task_done()
+                await asyncio.sleep(random.uniform(0.01, 0.05))  # Giúp giảm tải cho API và tránh bị ban IP
     async def run_campaign(self):
         logger.info(f"BẮT ĐẦU CHIẾN DỊCH QUÉT LÚC: {datetime.datetime.now()}")
         start_time = time.perf_counter()
@@ -172,7 +173,7 @@ class BusCrawler:
             client_kwargs["proxy"] = proxy_url
 
         async with httpx.AsyncClient(**client_kwargs) as http_client:
-            consumers = [asyncio.create_task(self.consumer_api_2(i, queue, http_client, all_results)) for i in range(20)]
+            consumers = [asyncio.create_task(self.consumer_api_2(i, queue, http_client, all_results)) for i in range(10)]
             total_stops = len(stop_ids)
             completed = 0
             next_log_pct = 10.0    
@@ -180,6 +181,7 @@ class BusCrawler:
             producer_tasks = [asyncio.create_task(self.producer_api_1(sid, queue, semaphore, http_client)) for sid in stop_ids]
             for task in asyncio.as_completed(producer_tasks):
                 await task
+                await asyncio.sleep(0.05)
                 completed += 1
                 progress_pct = (completed / total_stops) * 100 if total_stops else 100.0
 
