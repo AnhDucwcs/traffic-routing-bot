@@ -22,7 +22,7 @@ class TelegramBot:
             pool=10.0
         )
         # Tạo một phiên HTTPX AsyncClient tránh việc phải tạo mới mỗi lần gửi tin nhắn, đồng thời cấu hình proxy và giới hạn kết nối
-        self.session = httpx.AsyncClient(timeout=timeout_config, trust_env=False, proxy=proxy_url, limits=limits) 
+        self.session = httpx.AsyncClient(timeout=timeout_config, trust_env=False, proxy=None, limits=limits) 
         
     async def send_message(self, chat_id: int, text: str):
         url = f"{self.api_url}/sendMessage"
