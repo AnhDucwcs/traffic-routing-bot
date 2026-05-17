@@ -37,9 +37,9 @@ class TelegramBot:
                 return True
             except httpx.HTTPStatusError as e:
                 logger.exception(f"[TelegramBot] Lỗi từ máy chủ Telegram (Status {e.response.status_code})")
-            except (httpx.ConnectTimeout, httpx.ConnectError, httpx.RemoteProtocolError):
-                if attempt < 2:  # Chỉ log lỗi nếu chưa phải là lần thử cuối cùng
-                    logger.exception(f"[TelegramBot] Lỗi mạng khi nhắn tin (Lần {attempt + 1}/3)")
+            except httpx.RequestError as e:
+                if attempt < 2:  # Chỉ log cảnh báo cho 2 lần đầu, lần thứ 3 sẽ log lỗi
+                    logger.warning(f"[TelegramBot] Lỗi khi gửi tin nhắn (Lần {attempt + 1}/3)")
                     await asyncio.sleep(1)
                 else: 
                     logger.exception(f"Thất bại khi gửi tin nhắn đến chat_id {chat_id} sau 3 lần thử.")
