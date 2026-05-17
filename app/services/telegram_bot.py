@@ -14,7 +14,7 @@ class TelegramBot:
             max_connections=50,          # Tối đa 50 ống nước TCP mở cùng lúc ra ngoài
             max_keepalive_connections=0
         )
-        proxy_url = (settings.US_PROXY or "").strip()
+        proxy_url = (settings.VN_PROXY or "").strip()
         timeout_config = httpx.Timeout(
             connect=10.0, 
             read=10.0, 
@@ -22,7 +22,7 @@ class TelegramBot:
             pool=10.0
         )
         # Tạo một phiên HTTPX AsyncClient tránh việc phải tạo mới mỗi lần gửi tin nhắn, đồng thời cấu hình proxy và giới hạn kết nối
-        self.session = httpx.AsyncClient(timeout=timeout_config, trust_env=False, proxy=None, limits=limits) 
+        self.session = httpx.AsyncClient(timeout=timeout_config, trust_env=False, proxy=proxy_url, limits=limits) 
         
     async def send_message(self, chat_id: int, text: str):
         url = f"{self.api_url}/sendMessage"
