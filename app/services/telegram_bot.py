@@ -36,13 +36,13 @@ class TelegramBot:
                 response.raise_for_status()
                 return True
             except httpx.HTTPStatusError as e:
-                logger.error(f"[TelegramBot] Lỗi từ máy chủ Telegram (Status {e.response.status_code})")
+                logger.exception(f"[TelegramBot] Lỗi từ máy chủ Telegram (Status {e.response.status_code})")
             except (httpx.ConnectTimeout, httpx.ConnectError, httpx.RemoteProtocolError):
                 if attempt < 2:  # Chỉ log lỗi nếu chưa phải là lần thử cuối cùng
-                    logger.error(f"[TelegramBot] Lỗi mạng khi nhắn tin (Lần {attempt + 1}/3)")
+                    logger.exception(f"[TelegramBot] Lỗi mạng khi nhắn tin (Lần {attempt + 1}/3)")
                     await asyncio.sleep(1)
                 else: 
-                    logger.error(f"Thất bại khi gửi tin nhắn đến chat_id {chat_id} sau 3 lần thử.")
+                    logger.exception(f"Thất bại khi gửi tin nhắn đến chat_id {chat_id} sau 3 lần thử.")
         return False
 
     def _parse_update(self, update):
@@ -60,15 +60,15 @@ class TelegramBot:
     
     async def _handle_route_command(self, chat_id, user_sessions):
         try:
-            user_sessions[chat_id] = UserSession(chat_id=chat_id, state="awaiting_start")
             success = await self.send_message(chat_id, "Please send your starting location.")
             if not success:
-                logger.error(f"Failed to send message to chat_id {chat_id} after /route command")
+                logger.exception(f"Failed to send message to chat_id {chat_id} after /route command")
             else:
+                user_sessions[chat_id] = UserSession(chat_id=chat_id, state="awaiting_start")
                 logger.info(f"Started new routing session for chat_id {chat_id}")
             return {"status":"awaiting_start"}
         except Exception as e:
-            logger.exception(f"Error handling /route command for chat_id {chat_id}: {str(e)}")
+            logger.exception(f"Error handling /route command for chat_id {chat_id}: ")
             return {"status": "error"}
     
     async def _handle_location(self, chat_id, loc, user_sessions, graph):
@@ -90,11 +90,12 @@ class TelegramBot:
                     sess.start_lng = loc.longitude
                     success = await self.send_message(chat_id, "Starting location received. Please send your destination location.")
                     if not success:
-                        logger.error(f"Failed to send message to chat_id {chat_id} after receiving start location")
+                        logger.exception(f"Failed to send message to chat_id {chat_id} after receiving start location")
+                        return {"status": "error"}
                     else:
                         logger.info(f"Starting location received for chat_id {chat_id}")
-                    sess.state = "awaiting_end"
-                    return {"status":"awaiting_end"}
+                        sess.state = "awaiting_end"
+                        return {"status":"awaiting_end"}
                 if sess.state == "awaiting_end":
                     end_lat, end_lng = loc.latitude, loc.longitude
                     # route finding handled by routing_service
@@ -106,7 +107,7 @@ class TelegramBot:
                         pass
                     return await self._send_route_result(chat_id, path, graph)
             except Exception as e:
-                logger.exception(f"Error processing location for chat_id {chat_id}: {str(e)}")
+                logger.exception(f"Error processing location for chat_id {chat_id}: ")
                 return {"status": "error"}
 
         if lock is not None:
@@ -119,7 +120,7 @@ class TelegramBot:
         if not path:
             success = await self.send_message(chat_id, "Sorry, I couldn't find a route between those locations.")
             if not success:
-                logger.error(f"Error sending no route message to chat_id {chat_id}: {str(e)}")
+                logger.exception(f"Error sending no route message to chat_id {chat_id}: ")
             else:
                 logger.info(f"No route found for chat_id {chat_id}")
                 return {"status": "error"}
@@ -128,12 +129,12 @@ class TelegramBot:
         try:
             geojson_route = self.routing_service.to_geojson(graph, path)
         except Exception as e:
-            logger.error(f"Error generating GeoJSON for chat_id {chat_id}: {str(e)}")
+            logger.exception(f"Error generating GeoJSON for chat_id {chat_id}: ")
             geojson_route = None
 
         success = await self.send_message(chat_id, f"Route found with {len(path)} steps!")
         if not success:
-            logger.error(f"Error sending route found message to chat_id {chat_id}: {str(e)}")
+            logger.exception(f"Error sending route found message to chat_id {chat_id}: ")
         else:
             logger.info(f"Route found with {len(path)} steps for chat_id {chat_id}")
 
@@ -141,13 +142,13 @@ class TelegramBot:
         try:
             google_maps_url = self.routing_service.generate_google_maps_url(graph, path)
         except Exception as e:
-            logger.error(f"Error generating Google Maps URL for chat_id {chat_id}: {str(e)}")
+            logger.exception(f"Error generating Google Maps URL for chat_id {chat_id}: ")
             google_maps_url = None
 
         if google_maps_url:
             success = await self.send_message(chat_id, f"View the route on Google Maps: {google_maps_url}")
             if not success:
-                logger.error(f"Error sending Google Maps URL to chat_id {chat_id}")
+                logger.exception(f"Error sending Google Maps URL to chat_id {chat_id}")
             else:
                 logger.info(f"Sent Google Maps URL to chat_id {chat_id}")
 
