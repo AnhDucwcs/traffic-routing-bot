@@ -1,8 +1,9 @@
 import asyncio
 import httpx
 import pydantic
-from aiogram import Bot, types, Dispatcher
+from aiogram import Bot, types, Dispatcher, F
 from aiogram.filters import Command
+from aiogram.client.session.aiohttp import AiohttpSession
 from app.core.logger import logger
 from app.core.config import settings
 from app.models.schemas import RoutingRequest
@@ -14,11 +15,17 @@ from app.services.routing.service import RoutingService as rs
 class BotAdapter:
     def __init__(self, app):
         token = settings.TELEGRAM_BOT_TOKEN
-        self.bot = Bot(token=token)
+        proxy_url = (settings.VN_PROXY or "").strip()
+        if proxy_url:
+            logger.info("Khởi tạo Telegram Bot với VN_PROXY...")
+            session = AiohttpSession(proxy=proxy_url)
+            self.bot = Bot(token=token, session=session)
+        else:
+            self.bot = Bot(token=token)
         self.app = app
         self.dp = Dispatcher()
         self.dp.message.register(self.handle_message, Command(commands=["start", "route"]))
-        self.dp.message.register(self.handle_location, lambda message: message.location is not None)
+        self.dp.message.register(self.handle_location, F.location)
     
     async def handle_message(self, message: types.Message):
         logger.info(f"Received message: {message.text} from {message.from_user.id}")
