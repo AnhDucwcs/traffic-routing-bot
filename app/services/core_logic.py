@@ -1,7 +1,7 @@
 import asyncio
 
 from app.models.user_session import UserSession
-from app.services.routing.service import RoutingService as rs
+from app.services.routing.service import routing_service as rs
 
 async def process_routing_request(payload, app_state):
     session_id = f"{payload.platform}_{payload.user_id}"
