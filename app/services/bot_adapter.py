@@ -35,7 +35,7 @@ class BotAdapter:
             session_id = f"telegram_{message.chat.id}"
             session = self.app.state.user_sessions.get(session_id)
             if not session:
-                self.app.state.user_sessions[session_id] = UserSession(chat_id=message.chat.id, state="awaiting_start")
+                self.app.state.user_sessions[session_id] = UserSession(session_id=session_id, state="awaiting_start")
             else:
                 session.state = "awaiting_start"
             await message.answer("Vui lòng gửi vị trí hiện tại của bạn.") 
