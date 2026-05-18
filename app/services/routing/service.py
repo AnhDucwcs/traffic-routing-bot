@@ -2,8 +2,7 @@ from app.services.routing import pathfinder
 
 
 class RoutingService:
-    """Thin wrapper around pathfinder functionality to expose a stable service API."""
-
+    # Dịch vụ này sẽ cung cấp các phương thức để tìm đường, chuyển đổi định dạng, v.v.
     async def find_path(self, graph, start_lat: float, start_lng: float, end_lat: float, end_lng: float):
         return await pathfinder.find_shortest_path(graph, start_lat, start_lng, end_lat, end_lng)
 
