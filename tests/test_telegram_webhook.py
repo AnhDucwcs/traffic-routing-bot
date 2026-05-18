@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from app.main import app  # Import app FastAPI của bạn
+from app.main import app
 
 
 def test_webhook_route_command():

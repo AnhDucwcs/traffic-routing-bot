@@ -5,7 +5,7 @@ from app.api.routes import router
 from app.core.config import settings
 from app.core.logger import setup_logging
 from app.services.routing.map_builder import load_routing_graph
-from app.services.telegram_bot import TelegramBot
+from app.services.bot_adapter import BotAdapter
 from app.services.crawler.bus_crawler import BusCrawler
 from app.services.crawler.scheduler import CrawlerScheduler
 from app.services.routing.service import routing_service
@@ -22,15 +22,9 @@ async def lifespan(app: fastapi.FastAPI):
     init_app_state(app, maxsize=10000, ttl=300)
 
     # Create service instances and attach to app.state for DI
-    app.state.bot = TelegramBot()
     app.state.routing_service = routing_service
     app.state.crawler = BusCrawler()
-    # Wire dependencies into bot instance
-    try:
-        app.state.bot.routing_service = app.state.routing_service
-        app.state.bot.user_session_locks = app.state.user_session_locks
-    except Exception:
-        pass
+    bot_task = asyncio.create_task(BotAdapter(app).start_telegram_bot(user_sessions=app.state.user_sessions, graph=app.state.graph))
 
     # Start crawler scheduler
     app.state.crawler_scheduler = CrawlerScheduler(app.state.crawler)
@@ -47,7 +41,7 @@ async def lifespan(app: fastapi.FastAPI):
         pass
 
     try:
-        await app.state.bot.session.aclose()
+        bot_task.cancel()
     except Exception:
         pass
 
