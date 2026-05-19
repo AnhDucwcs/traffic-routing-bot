@@ -2,7 +2,7 @@ import asyncio
 
 from app.models.user_session import UserSession
 from app.services.routing.service import routing_service as rs
-from app.services.utils import _error_response, _success_response
+from app.services.utils import _error_response, _success_response, _pending_response
 
 async def process_routing_request(payload, app_state):
     session_id = f"{payload.platform}_{payload.user_id}"
@@ -16,7 +16,7 @@ async def process_routing_request(payload, app_state):
             session.start_lat = payload.latitude
             session.start_lng = payload.longitude
             session.state = "awaiting_end"
-            return _success_response("Đã nhận vị trí xuất phát. Vui lòng gửi vị trí đích.")
+            return _pending_response("Đã nhận vị trí xuất phát. Vui lòng gửi vị trí đích.")
         elif session.state == "awaiting_end":
             end_lat = payload.latitude
             end_lng = payload.longitude  
