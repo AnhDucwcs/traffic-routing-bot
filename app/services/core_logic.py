@@ -4,7 +4,7 @@ from app.models.user_session import UserSession
 from app.services.routing.service import routing_service as rs
 from app.services.utils import _error_response, _success_response, _pending_response
 
-async def process_routing_request(payload, app_state, send_reply_callback):
+async def process_routing_request(payload, app_state):
     session_id = f"{payload.platform}_{payload.user_id}"
     lock = app_state.user_session_locks[session_id] # Lấy lock tương ứng với session_id, nếu chưa có sẽ tự động tạo mới do defaultdict
 
@@ -20,26 +20,23 @@ async def process_routing_request(payload, app_state, send_reply_callback):
         elif session.state == "awaiting_end":
             end_lat = payload.latitude
             end_lng = payload.longitude  
+            graph = app_state.graph
+            path, distance_km, estimated_time_min = await rs.find_path(graph, session.start_lat, session.start_lng, end_lat, end_lng)
             
-            async def background_calculate():
-                graph = app_state.graph
-                path, distance_km, estimated_time_min = await rs.find_path(graph, session.start_lat, session.start_lng, end_lat, end_lng)
-                try:
-                    del app_state.user_sessions[session_id] # Xóa session sau khi đã sử dụng để tránh rác bộ nhớ
-                    del app_state.user_session_locks[session_id] # Xóa lock
-                except KeyError:
-                    pass
-                if path is None:
-                    await send_reply_callback(_error_response("Không tìm thấy lộ trình nào phù hợp."))
-                    return
+            try:
+                del app_state.user_sessions[session_id] # Xóa session sau khi đã sử dụng để tránh rác bộ nhớ
+                del app_state.user_session_locks[session_id] # Xóa lock
+            except KeyError:
+                pass
+            
+            if path is None:
+                return _error_response("Không tìm thấy lộ trình nào phù hợp.")
 
-                url = rs.generate_google_maps_url(graph, path)
-                geojson = rs.to_geojson(graph, path)
-                
-                await send_reply_callback(_success_response("Đã tính toán lộ trình thành công.", url, distance_km=distance_km, estimated_time_min=estimated_time_min, geojson=geojson))
-
-            asyncio.create_task(background_calculate())
-            return _pending_response("Đang tính toán lộ trình...")
+            url = rs.generate_google_maps_url(graph, path)
+            
+            geojson = rs.to_geojson(graph, path)
+            
+            return _success_response("Đã tính toán lộ trình thành công.", url, distance_km=distance_km, estimated_time_min=estimated_time_min, geojson=geojson)
     if lock is not None:
         async with lock:
             return await _process()
