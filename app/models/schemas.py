@@ -15,3 +15,15 @@ class RoutingResponse(BaseModel):
     geojson: dict | None = None
     navigation_url: str | None = None
     map_image_url: str | None = None
+    
+class Location(BaseModel):
+    lat: float
+    lng: float
+
+class JavaRoutingRequest(BaseModel):
+    userId: str
+    conversationId: str
+    platform: str
+    callbackUrl: str
+    origin: Location
+    destination: Location

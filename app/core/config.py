@@ -6,6 +6,7 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "Traffic Routing Bot"
     TELEGRAM_BOT_TOKEN: str
+    INTERNAL_API_KEY: str
     MONGO_URI: str
     VN_PROXY: str
     US_PROXY: str
