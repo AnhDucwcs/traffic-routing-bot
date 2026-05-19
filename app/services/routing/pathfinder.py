@@ -37,10 +37,8 @@ async def find_shortest_path(graph, start_lat: float, start_lng: float, end_lat:
             nx.astar_path, graph, start_node, end_node, heuristic=heuristic_func, weight="length"
         )
         distance_km = sum(graph.edges[path[i], path[i+1], 0]['length'] for i in range(len(path)-1)) / 1000  # Convert to km
-        distance_km = round(distance_km, 2)
         estimated_time_min = (distance_km / 35) * 60  # Assuming average speed of 35 km/h, convert to minutes
-        estimated_time_min = round(estimated_time_min, 2)
-        logger.info(f"Found path with distance: {distance_km} km, estimated time: {estimated_time_min} minutes")
+        logger.info(f"Found path with distance: {distance_km:.2f} km, estimated time: {estimated_time_min:.2f} minutes")
         return path, distance_km, estimated_time_min
     except nx.NetworkXNoPath:
         logger.info("No path found between the specified nodes.")
