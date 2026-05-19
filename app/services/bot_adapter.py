@@ -47,14 +47,21 @@ class BotAdapter:
             latitude=message.location.latitude,
             longitude=message.location.longitude
         )
-        result_text = await process_routing_request(payload, self.app.state)
-        if result_text["status"] == "success":
-            await message.answer(result_text["message"])
-            await message.answer(result_text["url"])
-        else:
-            await message.answer(result_text["message"])
-    
-    
+        try:
+            result_text = await process_routing_request(payload, self.app.state)
+            if result_text.status == "success":
+                text = f"**{result_text.message}**\n\n"
+                text += f"Khoảng cách: {result_text.distance_km} km\n"
+                text += f"Thời gian ước tính: {result_text.estimated_time_min} phút\n"
+                text += f"[Xem trên Google Maps]({result_text.navigation_url})"
+                await message.answer(text, parse_mode="Markdown", disable_web_page_preview=False)
+            else:
+                await message.answer(result_text.message)
+        except Exception as e:
+            logger.exception(f"Lỗi khi xử lý yêu cầu định tuyến: {e}")
+            await message.answer("Đã có lỗi xảy ra khi xử lý yêu cầu của bạn. Vui lòng thử lại sau.")
+
+
     async def start_telegram_bot(self, user_sessions, graph):
         logger.info("Starting Telegram bot...")
         await self.bot.delete_webhook(drop_pending_updates=True)  # Xóa webhook cũ nếu có để tránh xung đột
