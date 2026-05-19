@@ -1,4 +1,5 @@
 import asyncio
+import time
 import httpx
 import pydantic
 from aiogram import Bot, types, Dispatcher, F
@@ -48,7 +49,10 @@ class BotAdapter:
             longitude=message.location.longitude
         )
         try:
+            start_time = time.perf_counter()
             result_text = await process_routing_request(payload, self.app.state)
+            execution_time = time.perf_counter() - start_time
+            logger.info(f"Xử lý yêu cầu định tuyến Telegram mất {execution_time:.4f} giây")
             if result_text.status == "success":
                 text = f"**{result_text.message}**\n\n"
                 text += f"Khoảng cách: {result_text.distance_km} km\n"
