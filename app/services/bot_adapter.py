@@ -1,4 +1,5 @@
 import asyncio
+import time
 import httpx
 import pydantic
 from aiogram import Bot, types, Dispatcher, F
@@ -15,9 +16,9 @@ from app.services.routing.service import RoutingService as rs
 class BotAdapter:
     def __init__(self, app):
         token = settings.TELEGRAM_BOT_TOKEN
-        proxy_url = (settings.VN_PROXY or "").strip()
+        proxy_url = (settings.US_PROXY or "").strip()
         if proxy_url:
-            logger.info("Khởi tạo Telegram Bot với VN_PROXY...")
+            logger.info("Khởi tạo Telegram Bot với US_PROXY...")
             session = AiohttpSession(proxy=proxy_url)
             self.bot = Bot(token=token, session=session)
         else:
@@ -47,14 +48,26 @@ class BotAdapter:
             latitude=message.location.latitude,
             longitude=message.location.longitude
         )
-        result_text = await process_routing_request(payload, self.app.state)
-        if result_text["status"] == "success":
-            await message.answer(result_text["message"])
-            await message.answer(result_text["url"])
-        else:
-            await message.answer(result_text["message"])
-    
-    
+        try:
+            start_time = time.perf_counter()
+            result_text = await process_routing_request(payload, self.app.state)
+            execution_time = time.perf_counter() - start_time
+            logger.info(f"Xử lý yêu cầu định tuyến Telegram mất {execution_time:.4f} giây")
+            if result_text.status == "success":
+                text = f" <b>{result_text.message}</b> \n\n"
+                text += f"Khoảng cách: {result_text.distance_km} km\n"
+                text += f"Thời gian ước tính: {result_text.estimated_time_min} phút\n"
+                text += f"<a href='{result_text.navigation_url}'>Xem trên Google Maps</a>"
+                await message.answer(text, parse_mode="HTML", disable_web_page_preview=False)
+            elif result_text.status == "pending":
+                await message.answer(result_text.message)
+            else:
+                await message.answer(result_text.message)
+        except Exception as e:
+            logger.exception(f"Lỗi khi xử lý yêu cầu định tuyến: {e}")
+            await message.answer("Đã có lỗi xảy ra khi xử lý yêu cầu của bạn. Vui lòng thử lại sau.")
+
+
     async def start_telegram_bot(self, user_sessions, graph):
         logger.info("Starting Telegram bot...")
         await self.bot.delete_webhook(drop_pending_updates=True)  # Xóa webhook cũ nếu có để tránh xung đột

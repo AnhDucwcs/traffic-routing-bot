@@ -52,6 +52,7 @@ pandas==2.3.3
 pillow==12.2.0
 pluggy==1.6.0
 propcache==0.5.2
+psutil==7.2.2
 pyarrow==24.0.0
 pydantic==2.13.3
 pydantic-extra-types==2.11.1

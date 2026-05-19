@@ -1,5 +1,7 @@
 import asyncio
 import fastapi
+import psutil
+import os
 from loguru import logger
 from app.api.routes import router
 from app.core.config import settings
@@ -13,10 +15,17 @@ from app.core.state import init_app_state, shutdown_app_state
 
 setup_logging()
 
+# Hàm helper lấy RAM hiện tại của tiến trình (Process)
+def get_current_ram_mb():
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / (1024 * 1024)
 
 async def lifespan(app: fastapi.FastAPI):
     logger.info("Đang nạp Bản đồ vào RAM...")
+    ram_before = get_current_ram_mb()  # Gọi một lần để log RAM trước khi nạp graph
     app.state.graph = load_routing_graph()
+    ram_after = get_current_ram_mb()  # Gọi một lần để log RAM sau khi nạp graph
+    logger.info(f"Đã nạp Bản đồ vào RAM. RAM trước: {ram_before:.2f} MB, RAM sau: {ram_after:.2f} MB, Tăng thêm: {ram_after - ram_before:.2f} MB")
 
     # Initialize shared application state (user sessions + locks)
     init_app_state(app, maxsize=10000, ttl=300)
