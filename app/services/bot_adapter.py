@@ -48,20 +48,26 @@ class BotAdapter:
             latitude=message.location.latitude,
             longitude=message.location.longitude
         )
+        async def reply_callback(result_text):
+            try:
+                if result_text.status == "success":
+                    text = f"<b>{result_text.message}</b>\n\n"
+                    text += f"Khoảng cách: {result_text.distance_km} km\n"
+                    text += f"Thời gian ước tính: {result_text.estimated_time_min} phút\n"
+                    text += f"<a href='{result_text.navigation_url}'>Xem trên Google Maps</a>"
+                    await message.answer(text, parse_mode="HTML", disable_web_page_preview=False)
+                else:
+                    await message.answer(result_text.message)
+            except Exception as e:
+                logger.exception(f"Lỗi khi gửi phản hồi cho Telegram: {e}")
+                await message.answer("Đã có lỗi xảy ra khi gửi phản hồi. Vui lòng thử lại sau.")
+        
         try:
             start_time = time.perf_counter()
-            result_text = await process_routing_request(payload, self.app.state)
+            result_text = await process_routing_request(payload, self.app.state, reply_callback)
             execution_time = time.perf_counter() - start_time
             logger.info(f"Xử lý yêu cầu định tuyến Telegram mất {execution_time:.4f} giây")
-            if result_text.status == "success":
-                text = f" <b>{result_text.message}</b> \n\n"
-                text += f"Khoảng cách: {result_text.distance_km} km\n"
-                text += f"Thời gian ước tính: {result_text.estimated_time_min} phút\n"
-                text += f"<a href='{result_text.navigation_url}'>Xem trên Google Maps</a>"
-                await message.answer(text, parse_mode="HTML", disable_web_page_preview=False)
-            elif result_text.status == "pending":
-                await message.answer(result_text.message)
-            else:
+            if result_text.status in ["pending", "error"]:
                 await message.answer(result_text.message)
         except Exception as e:
             logger.exception(f"Lỗi khi xử lý yêu cầu định tuyến: {e}")
