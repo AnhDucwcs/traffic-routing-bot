@@ -8,7 +8,7 @@ class RoutingRequest(BaseModel):
     longitude: float
 
 class RoutingResponse(BaseModel):
-    status: Literal["success", "error"]
+    status: Literal["success", "error", "pending"]
     message: str
     distance_km: float | None = None   
     estimated_time_min: float | None = None
