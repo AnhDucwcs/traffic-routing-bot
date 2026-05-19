@@ -34,21 +34,21 @@ traffic-routing-bot/
 │   ├── main.py                  # Entry point - FastAPI app với lifespan management
 │   ├── api/                     # API endpoints
 │   │   ├── __init__.py
-│   │   └── routes.py            # HTTP routes (GET /, /health-check, POST /api/v1/routing)
+│   │   └── routes.py            # HTTP routes (GET /, /health-check, POST /api/v1/routing/java)
 │   ├── core/                    # Cấu hình và utilities
 │   │   ├── __init__.py
-│   │   ├── config.py            # Settings (TELEGRAM_BOT_TOKEN, MONGO_URI, proxies)
+│   │   ├── config.py            # Settings (TELEGRAM_BOT_TOKEN, INTERNAL_API_KEY, MONGO_URI, proxies)
 │   │   ├── logger.py            # Logging setup
 │   │   └── state.py             # App state management (user sessions)
 │   ├── models/                  # Data models
 │   │   ├── __init__.py
-│   │   ├── request_models.py    # Request payload models
 │   │   ├── schemas.py           # Data validation schemas
 │   │   └── user_session.py      # User session model
 │   └── services/                # Business logic layer
 │       ├── __init__.py
 │       ├── bot_adapter.py       # Telegram bot integration
 │       ├── core_logic.py        # Main routing logic
+│       ├── utils.py             # Response helpers
 │       ├── crawler/             # Bus data crawler
 │       │   ├── __init__.py
 │       │   ├── bus_crawler.py   # Web crawler cho dữ liệu bus tuyến
@@ -86,6 +86,7 @@ traffic-routing-bot/
 - **Server ASGI:** Uvicorn (implicit through FastAPI)
 - **Async Runtime:** asyncio
 - **Logging:** loguru 0.7.3
+- **System Metrics:** psutil 7.2.2 (RAM logging)
 
 **Data & Maps:**
 - **OSM Processing:** osmnx 2.1.0
@@ -96,7 +97,7 @@ traffic-routing-bot/
 
 **Telegram Bot:**
 - **Bot Framework:** aiogram 3.28.2
-- **Proxy Support:** aiohttp-socks 0.11.0, httpx-socks 0.11.0
+- **Proxy Support:** aiohttp-socks 0.10.1, httpx-socks 0.11.0
 
 **Database:**
 - **MongoDB** - Tích hợp qua PyMongo (bus_crawler.py, scripts/eda_time.py)
@@ -137,6 +138,7 @@ traffic-routing-bot/
 
 - **Startup Sequence (Lifespan)**
   - Log: "Đang nạp Bản đồ vào RAM..."
+  - Log RAM trước/sau khi nạp graph (psutil)
   - Load routing graph từ offline data file
   - Initialize app state (user sessions management)
   - Create routing service instance
@@ -172,9 +174,10 @@ traffic-routing-bot/
 - **Environment Variables được hỗ trợ:**
   1. `PROJECT_NAME` (default: "Traffic Routing Bot")
   2. `TELEGRAM_BOT_TOKEN` - Telegram bot token (bắt buộc)
-  3. `MONGO_URI` - MongoDB connection string (bắt buộc)
-  4. `VN_PROXY` - Vietnam proxy URL (optional)
-  5. `US_PROXY` - US proxy URL (optional)
+  3. `INTERNAL_API_KEY` - API key cho Java callback (bắt buộc)
+  4. `MONGO_URI` - MongoDB connection string (bắt buộc)
+  5. `VN_PROXY` - Vietnam proxy URL (optional)
+  6. `US_PROXY` - US proxy URL (optional)
 
 - **Validation:**
   - Pydantic tự động validate types
@@ -209,6 +212,7 @@ traffic-routing-bot/
 - **App State Attributes:**
   - `app.state.graph` - Routing graph (loaded in memory)
   - `app.state.user_sessions` - User session store
+  - `app.state.user_session_locks` - Per-session locks
   - `app.state.routing_service` - Routing service instance
   - `app.state.crawler` - Bus crawler instance
   - `app.state.crawler_scheduler` - Scheduler instance
@@ -255,18 +259,20 @@ traffic-routing-bot/
   - Same as GET but no response body
   - Status: ✅ Complete
 
-- **Endpoint 4: POST /api/v1/routing**
-  - Description: Core routing request processing
-  - Request body: `RoutingRequest` model (pydantic)
-  - Access to app state: Via `request.app.state`
-  - Processing: Calls `process_routing_request(payload, request.app.state)`
-  - Response on success: `{"message": "...", "url": "..."}`
-  - Response on error: `{"message": "..."}`
-  - Status: ✅ Complete (skeleton)
+- **Endpoint 4: POST /api/v1/routing/java**
+  - Description: Xử lý định tuyến async cho hệ thống Java
+  - Request body: `JavaRoutingRequest`
+  - Header: `x-internal-api-key` (bắt buộc)
+  - Processing: chạy background task (BackgroundTasks) và callback về `callbackUrl`
+  - Ghi log thời gian tính toán route
+  - Callback header: `x-internal-api-key` (INTERNAL_API_KEY)
+  - Response: HTTP 202 Accepted
+  - Status: ✅ Implemented
 
 **Request/Response Models:**
 - `RoutingRequest` - Pydantic model for routing requests
-- Standardized response format: status-based responses
+- `RoutingResponse` - Standardized response object
+- `JavaRoutingRequest` - Request cho Java async routing
 
 **Mục đích:** HTTP API interface, request routing, response handling
 
@@ -340,9 +346,11 @@ traffic-routing-bot/
   - `/start` → gửi lời chào
   - `/route` → tạo/khởi động session, yêu cầu gửi vị trí xuất phát
   - Location message → gọi `process_routing_request()`
+  - Log thời gian xử lý yêu cầu định tuyến
+  - Reply dạng Markdown với distance, estimated_time, URL Google Maps
 
 - **Proxy Support:**
-  - VN_PROXY (AiohttpSession proxy) nếu có
+  - US_PROXY (AiohttpSession proxy) nếu có
 
 **Mục đích:** Telegram bot interface cho user bắt đầu flow định tuyến
 
@@ -390,6 +398,7 @@ traffic-routing-bot/
 
 - **RoutingService Class:**
   - `find_path()` → gọi `pathfinder.find_shortest_path()` (A* trên NetworkX)
+  - Trả về path + distance_km + estimated_time_min (ước lượng tốc độ 35 km/h)
   - `generate_google_maps_url()` → tạo URL Google Maps từ path
   - `to_geojson()` → convert path sang GeoJSON LineString
 
@@ -408,10 +417,11 @@ traffic-routing-bot/
 
 - **Function: process_routing_request(payload, app_state)**
   - Input: `RoutingRequest` payload, `app_state` (graph, sessions, services)
-  - Nếu chưa có session → trả lỗi “Vui lòng nhập lệnh /route để bắt đầu.”
+  - Nếu chưa có session → trả `RoutingResponse` lỗi
   - Nếu `awaiting_start` → lưu start_lat/lng, chuyển state sang `awaiting_end`
-  - Nếu `awaiting_end` → gọi `routing_service.find_path()` và trả URL Google Maps
+  - Nếu `awaiting_end` → gọi `routing_service.find_path()`, tạo Google Maps URL và GeoJSON
   - Cleanup session + lock sau khi xử lý xong
+  - Output: `RoutingResponse` từ `_success_response` / `_error_response` (app/services/utils.py)
 
 **Mục đích:** State machine cho flow định tuyến qua API
 
@@ -419,21 +429,19 @@ traffic-routing-bot/
 
 ### 12. ✅ Data Models & Schemas
 
-**File:** `app/models/user_session.py`, `app/models/schemas.py`, `app/models/request_models.py`  
+**File:** `app/models/user_session.py`, `app/models/schemas.py`  
 **Status:** ✅ Implemented (basic schemas)  
 **Chi tiết triển khai:**
 
-- **request_models.py**
-  - `Chat`, `Location`, `Message`, `TelegramUpdate` (mapping data Telegram update)
-  - `TelegramUpdate` có `message` và `edited_message` (optional)
-
 - **schemas.py**
   - `RoutingRequest`: `user_id`, `platform` (telegram/java_web), `latitude`, `longitude`
+  - `RoutingResponse`: `status`, `message`, `distance_km`, `estimated_time_min`, `geojson`, `navigation_url`, `map_image_url`
+  - `JavaRoutingRequest` + `Location`: payload cho `/api/v1/routing/java`
 
 - **user_session.py**
   - `UserSession`: `session_id`, `state`, `start_lat`, `start_lng`
 
-**Mục đích:** Data validation cho request và session state
+**Mục đích:** Data validation cho request/response và session state
 
 
 ---
@@ -441,10 +449,12 @@ traffic-routing-bot/
 ## V. Cập Nhật Lần Cuối
 
 - **Ngày:** 19/05/2026
-- **Nội dung xác minh:**
-  - Đối chiếu code thực tế ở app/, scripts/, tests/, Dockerfile, README
-  - Cập nhật lại các mục sai (Telegram handlers, crawler schedule, MongoDB driver/collection)
-  - Loại bỏ các claim không có trong code (tỷ lệ thành công, TTL, autoscaling, v.v.)
+- **Nội dung xác minh (dựa trên git history + code hiện tại):**
+  - Thêm endpoint async `/api/v1/routing/java` + callback (INTERNAL_API_KEY)
+  - Chuẩn hóa output qua `RoutingResponse` + helper `app/services/utils.py`
+  - Log thời gian xử lý route (Java callback + Telegram)
+  - Log RAM trước/sau khi load graph (psutil)
+  - Loại bỏ `request_models.py` khỏi models (file đã bị xóa)
 
 ---
 

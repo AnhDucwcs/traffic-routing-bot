@@ -54,11 +54,12 @@ class BotAdapter:
             execution_time = time.perf_counter() - start_time
             logger.info(f"Xử lý yêu cầu định tuyến Telegram mất {execution_time:.4f} giây")
             if result_text.status == "success":
-                text = f"**{result_text.message}**\n\n"
-                text += f"Khoảng cách: {result_text.distance_km} km\n"
-                text += f"Thời gian ước tính: {result_text.estimated_time_min} phút\n"
-                text += f"[Xem trên Google Maps]({result_text.navigation_url})"
-                await message.answer(text, parse_mode="Markdown", disable_web_page_preview=False)
+                text = f" <b>{result_text.message}</b> \n\n"
+                if result_text.distance_km is not None and result_text.estimated_time_min is not None:
+                    text += f"<blockquote> Khoảng cách: {result_text.distance_km} km\n"
+                    text += f"<blockquote> Thời gian ước tính: {result_text.estimated_time_min} phút\n"
+                text += f"<a href='{result_text.navigation_url}'>Xem trên Google Maps</a>"
+                await message.answer(text, parse_mode="HTML", disable_web_page_preview=False)
             else:
                 await message.answer(result_text.message)
         except Exception as e:
