@@ -100,4 +100,5 @@ async def get_routing_result(route_id: str, request: Request):
     if not route_result:
         logger.exception(f"Không tìm thấy kết quả cho route_id: {route_id}")
         raise HTTPException(status_code=404, detail="Không tìm thấy kết quả lộ trình")
+    logger.info(f"API đang trả về GeoJSON: {route_result}")
     return route_result
