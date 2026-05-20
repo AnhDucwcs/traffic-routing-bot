@@ -41,13 +41,19 @@
 
         // --- D. VẼ ĐƯỜNG ĐI BẰNG GEOJSON ---
         if (routeId) {
-            const params = new URLSearchParams(window.location.search);
-            const routeId = params.get('id');
             fetch(`/api/v1/routing/result/${routeId}`)
             .then(res => res.json())
             .then(data => {
-                L.geoJSON(data.geojson, { color: 'blue', weight: 5 }).addTo(map);
+                // Vẽ đường đi lên bản đồ
+                const routeLayer = L.geoJSON(data.geojson, { 
+                    color: 'blue', 
+                    weight: 5 
+                }).addTo(map);
+
+                // QUAN TRỌNG: Tự động zoom vào đường đi
+                map.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
             })
+            .catch(err => console.error("Lỗi fetch:", err));
         }
     </script>
 </body>
