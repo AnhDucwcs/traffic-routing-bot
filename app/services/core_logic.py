@@ -43,7 +43,7 @@ async def process_routing_request(payload, app_state):
                 "geojson": geojson
             }
 
-            return _success_response("Đã tính toán lộ trình thành công.", navigation_url=url, distance_km=distance_km, estimated_time_min=estimated_time_min, route_id=route_id)
+            return _success_response("Đã tính toán lộ trình thành công.", url=url, distance_km=distance_km, estimated_time_min=estimated_time_min, route_id=route_id)
     if lock is not None:
         async with lock:
             return await _process()
