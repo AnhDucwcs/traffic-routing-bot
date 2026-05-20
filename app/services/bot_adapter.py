@@ -60,7 +60,7 @@ class BotAdapter:
                     [
                         InlineKeyboardButton(
                             text="Xem bản đồ tương tác", 
-                            web_app=WebAppInfo(url=f"https://huggingface.co/spaces/lnanhduc12/ai-traffic-routing-bot.hf.space/app/index.html?id={result_text.route_id}")
+                            web_app=WebAppInfo(url=f"https://lnanhduc12-ai-traffic-routing-bot.hf.space/app/index.html?id={result_text.route_id}")
                         )
                     ]
                 ])
