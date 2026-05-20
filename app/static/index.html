@@ -51,8 +51,6 @@
                 return res.json();
         })
             .then(data => {
-                const startPoint = coords[0];          // [lng, lat]
-                const endPoint = coords[coords.length - 1]; // [lng, lat]
                 // Vẽ đường đi lên bản đồ
                 const routeLayer = L.geoJSON(data.geojson, { 
                     color: 'blue', 
@@ -62,6 +60,10 @@
 
                 // QUAN TRỌNG: Tự động zoom vào đường đi
                 map.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
+
+                const coords = data.geojson.coordinates;
+                const startPoint = coords[0];          // [lng, lat]
+                const endPoint = coords[coords.length - 1]; // [lng, lat]
 
                 L.marker([startPoint[1], startPoint[0]], {
                     icon: L.icon({
