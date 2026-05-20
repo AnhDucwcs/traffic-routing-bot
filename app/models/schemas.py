@@ -14,7 +14,7 @@ class RoutingResponse(BaseModel):
     estimated_time_min: float | None = None
     geojson: dict | None = None
     navigation_url: str | None = None
-    map_image_url: str | None = None
+    route_id: str | None = None
     
 class Location(BaseModel):
     lat: float

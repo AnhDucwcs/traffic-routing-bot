@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lộ Trình Tối Ưu - AI Bot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <style>
+        /* Xóa viền trắng, cho bản đồ tràn viền 100% màn hình */
+        body { margin: 0; padding: 0; }
+        #map { width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script>
+        // --- A. KẾT NỐI TELEGRAM ---
+        // Báo cho Telegram biết App đã load xong, yêu cầu mở Full màn hình
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+
+        // --- B. LẤY THAM SỐ TỪ URL ---
+        // Lấy cái 'route_id' mà Bot Telegram vừa gửi vào URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const routeId = urlParams.get('route_id');
+
+        // --- C. KHỞI TẠO BẢN ĐỒ ---
+        // Mặc định focus vào trung tâm TP.HCM (Zoom level 13)
+        const map = L.map('map').setView([10.762622, 106.660172], 13);
+
+        // Đắp lớp gạch bản đồ (Tile Layer) của OpenStreetMap lên
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        // --- D. VẼ ĐƯỜNG ĐI BẰNG GEOJSON ---
+        if (routeId) {
+            const params = new URLSearchParams(window.location.search);
+            const routeId = params.get('id');
+            fetch(`/api/v1/routing/result/${routeId}`)
+            .then(res => res.json())
+            .then(data => {
+                L.geoJSON(data.geojson, { color: 'blue', weight: 5 }).addTo(map);
+            })
+        }
+    </script>
+</body>
+</html>

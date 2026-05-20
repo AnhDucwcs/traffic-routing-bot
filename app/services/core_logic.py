@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 
 from app.models.user_session import UserSession
 from app.services.routing.service import routing_service as rs
@@ -20,6 +21,7 @@ async def process_routing_request(payload, app_state):
         elif session.state == "awaiting_end":
             end_lat = payload.latitude
             end_lng = payload.longitude  
+            route_id = str(uuid.uuid4())
             graph = app_state.graph
             path, distance_km, estimated_time_min = await rs.find_path(graph, session.start_lat, session.start_lng, end_lat, end_lng)
             
@@ -36,7 +38,12 @@ async def process_routing_request(payload, app_state):
             
             geojson = rs.to_geojson(graph, path)
             
-            return _success_response("Đã tính toán lộ trình thành công.", url, distance_km=distance_km, estimated_time_min=estimated_time_min, geojson=geojson)
+            # Lưu kết quả lộ trình vào store
+            app_state.route_results[route_id] = {
+                "geojson": geojson
+            }
+
+            return _success_response("Đã tính toán lộ trình thành công.", navigation_url=url, distance_km=distance_km, estimated_time_min=estimated_time_min, route_id=route_id)
     if lock is not None:
         async with lock:
             return await _process()
