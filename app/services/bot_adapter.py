@@ -18,9 +18,9 @@ from app.services.routing.service import RoutingService as rs
 class BotAdapter:
     def __init__(self, app):
         token = settings.TELEGRAM_BOT_TOKEN
-        proxy_url = (settings.US_PROXY or "").strip()
+        proxy_url = (settings.VN_PROXY or "").strip()
         if proxy_url:
-            logger.info("Khởi tạo Telegram Bot với US_PROXY...")
+            logger.info("Khởi tạo Telegram Bot với VN_PROXY...")
             session = AiohttpSession(proxy=proxy_url)
             self.bot = Bot(token=token, session=session)
         else:
