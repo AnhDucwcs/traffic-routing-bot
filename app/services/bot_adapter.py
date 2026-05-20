@@ -27,9 +27,14 @@ class BotAdapter:
             self.bot = Bot(token=token)
         self.app = app
         self.dp = Dispatcher()
+        self.dp.errors.register(self.error_handler)
         self.dp.message.register(self.handle_message, Command(commands=["start", "route"]))
         self.dp.message.register(self.handle_location, F.location)
     
+    async def error_handler(event: types.ErrorEvent):
+        logger.error(f"LỖI HỆ THỐNG AIOGRAM: {event.exception}", exc_info=True)
+        return True
+        
     async def handle_message(self, message: types.Message):
         logger.info(f"Received message: {message.text} from {message.from_user.id}")
         if message.text.startswith("/start"):
