@@ -44,6 +44,7 @@
             fetch(`/api/v1/routing/result/${routeId}`)
             .then(res => res.json())
             .then(data => {
+                console.log("Dữ liệu nhận được từ API:", data);
                 // Vẽ đường đi lên bản đồ
                 const routeLayer = L.geoJSON(data.geojson, { 
                     color: 'blue', 
