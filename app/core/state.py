@@ -21,6 +21,7 @@ def init_app_state(app, maxsize: int = 10000, ttl: int = 300):
     store = SessionStore(maxsize=maxsize, ttl=ttl)
     app.state.user_sessions = store.store
     app.state.user_session_locks = store.locks
+    app.state.route_results = store.store  # Reuse the same TTLCache for route results, or create a separate one if needed
 
 
 def shutdown_app_state(app):
@@ -30,5 +31,9 @@ def shutdown_app_state(app):
         pass
     try:
         app.state.user_session_locks.clear()
+    except Exception:
+        pass
+    try:
+        app.state.route_results.clear()
     except Exception:
         pass

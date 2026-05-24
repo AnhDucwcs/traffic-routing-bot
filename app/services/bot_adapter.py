@@ -5,6 +5,8 @@ import pydantic
 from aiogram import Bot, types, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types.web_app_info import WebAppInfo
 from app.core.logger import logger
 from app.core.config import settings
 from app.models.schemas import RoutingRequest
@@ -16,18 +18,23 @@ from app.services.routing.service import RoutingService as rs
 class BotAdapter:
     def __init__(self, app):
         token = settings.TELEGRAM_BOT_TOKEN
-        proxy_url = (settings.US_PROXY or "").strip()
+        proxy_url = (settings.VN_PROXY or "").strip()
         if proxy_url:
-            logger.info("Khởi tạo Telegram Bot với US_PROXY...")
+            logger.info("Khởi tạo Telegram Bot với VN_PROXY...")
             session = AiohttpSession(proxy=proxy_url)
             self.bot = Bot(token=token, session=session)
         else:
             self.bot = Bot(token=token)
         self.app = app
         self.dp = Dispatcher()
+        self.dp.errors.register(self.error_handler)
         self.dp.message.register(self.handle_message, Command(commands=["start", "route"]))
         self.dp.message.register(self.handle_location, F.location)
     
+    async def error_handler(event: types.ErrorEvent):
+        logger.error(f"LỖI HỆ THỐNG AIOGRAM: {event.exception}", exc_info=True)
+        return True
+        
     async def handle_message(self, message: types.Message):
         logger.info(f"Received message: {message.text} from {message.from_user.id}")
         if message.text.startswith("/start"):
@@ -54,11 +61,19 @@ class BotAdapter:
             execution_time = time.perf_counter() - start_time
             logger.info(f"Xử lý yêu cầu định tuyến Telegram mất {execution_time:.4f} giây")
             if result_text.status == "success":
+                markup = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Xem bản đồ tương tác", 
+                            web_app=WebAppInfo(url=f"https://lnanhduc12-ai-traffic-routing-bot.hf.space/app/index.html?id={result_text.route_id}")
+                        )
+                    ]
+                ])
                 text = f" <b>{result_text.message}</b> \n\n"
                 text += f"Khoảng cách: {result_text.distance_km} km\n"
                 text += f"Thời gian ước tính: {result_text.estimated_time_min} phút\n"
                 text += f"<a href='{result_text.navigation_url}'>Xem trên Google Maps</a>"
-                await message.answer(text, parse_mode="HTML", disable_web_page_preview=False)
+                await message.answer(text, parse_mode="HTML", disable_web_page_preview=False, reply_markup=markup)
             elif result_text.status == "pending":
                 await message.answer(result_text.message)
             else:

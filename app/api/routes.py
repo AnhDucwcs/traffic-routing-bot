@@ -93,3 +93,12 @@ async def java_routing_endpoint(
     
     # Trả về HTTP 202 Accepted ngay lập tức để giải phóng App Java
     return {"status": "accepted", "message": "Đã tiếp nhận yêu cầu, đang xử lý..."}
+
+@router.get("/api/v1/routing/result/{route_id}")
+async def get_routing_result(route_id: str, request: Request):
+    route_result = request.app.state.route_results.get(route_id)
+    if not route_result:
+        logger.exception(f"Không tìm thấy kết quả cho route_id: {route_id}")
+        raise HTTPException(status_code=404, detail="Không tìm thấy kết quả lộ trình")
+    logger.info(f"Trả về kết quả lộ trình cho route_id: {route_id}")
+    return route_result

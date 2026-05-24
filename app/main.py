@@ -1,5 +1,6 @@
 import asyncio
 import fastapi
+from fastapi.staticfiles import StaticFiles
 import psutil
 import os
 from loguru import logger
@@ -60,3 +61,4 @@ async def lifespan(app: fastapi.FastAPI):
 
 app = fastapi.FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 app.include_router(router)
+app.mount("/app", StaticFiles(directory="app/static"), name="static")
