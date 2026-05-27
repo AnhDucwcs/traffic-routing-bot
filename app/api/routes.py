@@ -7,11 +7,24 @@ import uuid
 from urllib.parse import urlparse
 from app.models.schemas import RoutingRequest
 from app.services.response_helper import create_success_response, create_error_response
+import uuid
+from urllib.parse import urlparse
+from app.models.schemas import RoutingRequest
+from app.services.response_helper import create_success_response, create_error_response
 from app.core.config import settings
 from app.core.logger import logger
 
 
 router = APIRouter()
+
+
+def _validate_callback_url(callback_url: str | None):
+    if not callback_url:
+        raise HTTPException(status_code=400, detail="Thiếu callbackUrl")
+
+    parsed = urlparse(callback_url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="callbackUrl không hợp lệ")
 
 
 def _validate_callback_url(callback_url: str | None):
@@ -33,6 +46,8 @@ async def health_check():
 
 async def process_routing_background(payload: RoutingRequest, app_state):
     logger.info(f"Bắt đầu xử lý ngầm: Conversation {payload.conversation_id}")
+async def process_routing_background(payload: RoutingRequest, app_state):
+    logger.info(f"Bắt đầu xử lý ngầm: Conversation {payload.conversation_id}")
     start_time = time.perf_counter()
     
     # 1. Lấy tọa độ từ payload
@@ -40,15 +55,22 @@ async def process_routing_background(payload: RoutingRequest, app_state):
     start_lng = payload.origin.longitude
     end_lat = payload.destination.latitude
     end_lng = payload.destination.longitude
+    start_lat = payload.origin.latitude
+    start_lng = payload.origin.longitude
+    end_lat = payload.destination.latitude
+    end_lng = payload.destination.longitude
 
     graph = app_state.graph
+    path, distance_km, estimated_time_min = await app_state.routing_service.find_path(graph, start_lat, start_lng, end_lat, end_lng)
     path, distance_km, estimated_time_min = await app_state.routing_service.find_path(graph, start_lat, start_lng, end_lat, end_lng)
     
     # Đo thời gian
     execution_time = time.perf_counter() - start_time
     logger.info(f"Tính toán lộ trình mất {execution_time:.4f} giây")
+    logger.info(f"Tính toán lộ trình mất {execution_time:.4f} giây")
 
     if path is None:
+        data = create_error_response("Không tìm thấy lộ trình phù hợp.")
         data = create_error_response("Không tìm thấy lộ trình phù hợp.")
     else:
         url = app_state.routing_service.generate_google_maps_url(graph, path)
@@ -65,14 +87,32 @@ async def process_routing_background(payload: RoutingRequest, app_state):
         logger.error(f"Bỏ qua callback do thiếu URL cho conversation: {payload.conversation_id}")
         return
 
+        url = app_state.routing_service.generate_google_maps_url(graph, path)
+        geojson = app_state.routing_service.convert_path_to_geojson(graph, path)
+        route_id = str(uuid.uuid4())
+        app_state.route_results[route_id] = {
+            "geojson": geojson,
+        }
+        data = create_success_response(geojson, url, route_id, distance_km, estimated_time_min)
+
+    response_payload = data.model_dump()
+ 
+    if not payload.callback_url:
+        logger.error(f"Bỏ qua callback do thiếu URL cho conversation: {payload.conversation_id}")
+        return
+
     async with httpx.AsyncClient() as client:
         try:
-            headers = {"x-internal-api-key": settings.INTERNAL_API_KEY}
+            headers = {"x_internal_api_key": settings.INTERNAL_API_KEY}
             await client.post(payload.callback_url, json=response_payload, headers=headers, timeout=10.0)
             logger.info(f"Đã trả kết quả về Callback: {payload.callback_url}")
         except Exception as e:
             logger.error(f"Lỗi khi gọi Callback: {e}")
+            logger.error(f"Lỗi khi gọi Callback: {e}")
 
+@router.post("/api/v1/routing/")
+async def routing_endpoint(
+    payload: RoutingRequest, 
 @router.post("/api/v1/routing/")
 async def routing_endpoint(
     payload: RoutingRequest, 
@@ -84,7 +124,10 @@ async def routing_endpoint(
         raise HTTPException(status_code=403, detail="Từ chối truy cập: Sai API Key")
 
     _validate_callback_url(payload.callback_url)
+
+    _validate_callback_url(payload.callback_url)
         
+    background_tasks.add_task(process_routing_background, payload, request.app.state)
     background_tasks.add_task(process_routing_background, payload, request.app.state)
     
     return {"status": "accepted", "message": "Đã tiếp nhận yêu cầu, đang xử lý..."}
