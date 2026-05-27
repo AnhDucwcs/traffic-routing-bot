@@ -8,11 +8,9 @@ from app.api.routes import router
 from app.core.config import settings
 from app.core.logger import setup_logging
 from app.services.routing.map_builder import load_routing_graph
-from app.services.bot_adapter import BotAdapter
 from app.services.crawler.bus_crawler import BusCrawler
 from app.services.crawler.scheduler import CrawlerScheduler
 from app.services.routing.service import routing_service
-from app.core.state import init_app_state, shutdown_app_state
 
 setup_logging()
 
@@ -28,13 +26,9 @@ async def lifespan(app: fastapi.FastAPI):
     ram_after = get_current_ram_mb()  # Gọi một lần để log RAM sau khi nạp graph
     logger.info(f"Đã nạp Bản đồ vào RAM. RAM trước: {ram_before:.2f} MB, RAM sau: {ram_after:.2f} MB, Tăng thêm: {ram_after - ram_before:.2f} MB")
 
-    # Initialize shared application state (user sessions + locks)
-    init_app_state(app, maxsize=10000, ttl=300)
-
     # Create service instances and attach to app.state for DI
     app.state.routing_service = routing_service
     app.state.crawler = BusCrawler()
-    bot_task = asyncio.create_task(BotAdapter(app).start_telegram_bot(user_sessions=app.state.user_sessions, graph=app.state.graph))
 
     # Start crawler scheduler
     app.state.crawler_scheduler = CrawlerScheduler(app.state.crawler)
@@ -50,12 +44,6 @@ async def lifespan(app: fastapi.FastAPI):
     except Exception:
         pass
 
-    try:
-        bot_task.cancel()
-    except Exception:
-        pass
-
-    shutdown_app_state(app)
     del app.state.graph
 
 

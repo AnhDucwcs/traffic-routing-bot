@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     INTERNAL_API_KEY: str
     MONGO_URI: str
     VN_PROXY: str
-    US_PROXY: str
+    AI_ENGINE_API_KEY: str
+    TELEGRAM_BOT_CALLBACK_URL: str
+    JAVA_APP_CALLBACK_URL: str
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
         
 settings = Settings()

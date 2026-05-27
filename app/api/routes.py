@@ -3,13 +3,24 @@ from fastapi import Request
 from fastapi import BackgroundTasks, Header, HTTPException
 import httpx
 import time
-from app.models.schemas import JavaRoutingRequest
-from app.services.routing.service import routing_service as rs
+import uuid
+from urllib.parse import urlparse
+from app.models.schemas import RoutingRequest
+from app.services.response_helper import create_success_response, create_error_response
 from app.core.config import settings
 from app.core.logger import logger
 
 
 router = APIRouter()
+
+
+def _validate_callback_url(callback_url: str | None):
+    if not callback_url:
+        raise HTTPException(status_code=400, detail="Thiếu callbackUrl")
+
+    parsed = urlparse(callback_url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="callbackUrl không hợp lệ")
 
 @router.get("/")
 async def root():
@@ -20,78 +31,62 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
-async def process_java_routing_background(payload: JavaRoutingRequest, app_state):
-    logger.info(f"Bắt đầu xử lý ngầm cho Java: Conversation {payload.conversationId}")
+async def process_routing_background(payload: RoutingRequest, app_state):
+    logger.info(f"Bắt đầu xử lý ngầm: Conversation {payload.conversation_id}")
     start_time = time.perf_counter()
     
     # 1. Lấy tọa độ từ payload
-    start_lat = payload.origin.lat
-    start_lng = payload.origin.lng
-    end_lat = payload.destination.lat
-    end_lng = payload.destination.lng
+    start_lat = payload.origin.latitude
+    start_lng = payload.origin.longitude
+    end_lat = payload.destination.latitude
+    end_lng = payload.destination.longitude
 
     graph = app_state.graph
-    path, distance_km, estimated_time_min = await rs.find_path(graph, start_lat, start_lng, end_lat, end_lng)
+    path, distance_km, estimated_time_min = await app_state.routing_service.find_path(graph, start_lat, start_lng, end_lat, end_lng)
     
     # Đo thời gian
     execution_time = time.perf_counter() - start_time
-    logger.info(f"Tính toán lộ trình cho Java mất {execution_time:.4f} giây")
+    logger.info(f"Tính toán lộ trình mất {execution_time:.4f} giây")
 
     if path is None:
-        data = {
-            "conversationId": payload.conversationId,
-            "senderId": "BOT_ID",
-            "role": "BOT",
-            "type": "ROUTE_SUGGESTION",
-            "text": "Xin lỗi, không tìm thấy lộ trình nào phù hợp.",
-            "metadata": {
-                "route": None
-            },
-            "status": "error"
-        }
+        data = create_error_response("Không tìm thấy lộ trình phù hợp.")
     else:
-        url = rs.generate_google_maps_url(graph, path)
-        data = {
-            "conversationId": payload.conversationId,
-            "senderId": "BOT_ID",
-            "role": "BOT",
-            "type": "ROUTE_SUGGESTION",
-            "text": "Lộ trình tối ưu của bạn đã sẵn sàng.",
-            "metadata": {
-                "route": {
-                    "distance_km": distance_km,
-                    "estimated_time_mins": estimated_time_min,
-                    "navigation_url": url
-                }
-            },
-            "status": "success"
+        url = app_state.routing_service.generate_google_maps_url(graph, path)
+        geojson = app_state.routing_service.convert_path_to_geojson(graph, path)
+        route_id = str(uuid.uuid4())
+        app_state.route_results[route_id] = {
+            "geojson": geojson,
         }
-        
-    # 4. Bắn Webhook về lại cho Java
+        data = create_success_response(geojson, url, route_id, distance_km, estimated_time_min)
+
+    response_payload = data.model_dump()
+ 
+    if not payload.callback_url:
+        logger.error(f"Bỏ qua callback do thiếu URL cho conversation: {payload.conversation_id}")
+        return
+
     async with httpx.AsyncClient() as client:
         try:
-            # Nhớ thay bằng SECRET_KEY thực tế của dự án bạn
-            headers = {"x-internal-api-key": settings.INTERNAL_API_KEY}
-            await client.post(payload.callbackUrl, json=data, headers=headers, timeout=10.0)
-            logger.info(f"Đã trả kết quả về Java Callback: {payload.callbackUrl}")
+            headers = {"x_internal_api_key": settings.INTERNAL_API_KEY}
+            await client.post(payload.callback_url, json=response_payload, headers=headers, timeout=10.0)
+            logger.info(f"Đã trả kết quả về Callback: {payload.callback_url}")
         except Exception as e:
-            logger.error(f"Lỗi khi gọi Java Callback: {e}")
+            logger.error(f"Lỗi khi gọi Callback: {e}")
 
-@router.post("/api/v1/routing/java")
-async def java_routing_endpoint(
-    payload: JavaRoutingRequest, 
+@router.post("/api/v1/routing/")
+async def routing_endpoint(
+    payload: RoutingRequest, 
     request: Request,
     background_tasks: BackgroundTasks,
     x_internal_api_key: str = Header(...)
 ):
-    # Bảo mật: Kiểm tra API Key
     if x_internal_api_key != settings.INTERNAL_API_KEY:
         raise HTTPException(status_code=403, detail="Từ chối truy cập: Sai API Key")
+
+    _validate_callback_url(payload.callback_url)
         
-    # Đẩy tác vụ vào luồng chạy ngầm
-    background_tasks.add_task(process_java_routing_background, payload, request.app.state)
+    background_tasks.add_task(process_routing_background, payload, request.app.state)
     
-    # Trả về HTTP 202 Accepted ngay lập tức để giải phóng App Java
     return {"status": "accepted", "message": "Đã tiếp nhận yêu cầu, đang xử lý..."}
 
 @router.get("/api/v1/routing/result/{route_id}")
