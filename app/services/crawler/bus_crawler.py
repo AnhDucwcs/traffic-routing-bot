@@ -57,12 +57,6 @@ class BusCrawler:
                 except httpx.ReadTimeout:
                     logger.warning(f"Trạm {stop_id}: Proxy phản hồi quá chậm (ReadTimeout Lần {attempt + 1}/3).")
                     await asyncio.sleep(1)
-                except httpx.RemoteProtocolError:
-                    logger.warning(f"Trạm {stop_id}: Server cắt kết nối HTTP/2 (Lần {attempt + 1}/3). Đợi 1s...")
-                    await asyncio.sleep(1)
-                except httpx.HTTPError as e:
-                    logger.warning(f"Trạm {stop_id}: Lỗi HTTP {e.response.status_code if e.response else 'N/A'} (Lần {attempt + 1}/3). Đợi 1s...")
-                    await asyncio.sleep(1)
                 except Exception as e:
                     logger.error(f"[Radar] Lỗi khi quét trạm {stop_id}: {type(e).__name__} - {str(e)}")
                     break  # Với lỗi khác, không cần retry, thoát luôn
