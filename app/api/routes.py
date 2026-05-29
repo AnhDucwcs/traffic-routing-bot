@@ -67,7 +67,7 @@ async def process_routing_background(payload: RoutingRequest, app_state):
 
     async with httpx.AsyncClient() as client:
         try:
-            headers = {"x_internal_api_key": settings.INTERNAL_API_KEY}
+            headers = {"x-internal-api-key": settings.INTERNAL_API_KEY}
             await client.post(payload.callback_url, json=response_payload, headers=headers, timeout=10.0)
             logger.info(f"Đã trả kết quả về Callback: {payload.callback_url}")
         except Exception as e:
@@ -78,7 +78,7 @@ async def routing_endpoint(
     payload: RoutingRequest, 
     request: Request,
     background_tasks: BackgroundTasks,
-    x_internal_api_key: str = Header(...)
+    x_internal_api_key: str = Header(..., alias="x-internal-api-key")
 ):
     if x_internal_api_key != settings.INTERNAL_API_KEY:
         raise HTTPException(status_code=403, detail="Từ chối truy cập: Sai API Key")
