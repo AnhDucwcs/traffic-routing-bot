@@ -118,7 +118,7 @@ async def build_segment_lengths():
     
     src_dir = pathlib.Path(__file__).parent.parent
     stops_file = src_dir / "data" / "master_stops.json"
-    output_file = src_dir / "data" / "segment_lengths.json"
+    output_file = src_dir / "data" / "segment_lengths_v1.json"
     
     with open(stops_file, "r", encoding="utf-8") as f:
         master_stops = json.load(f)
