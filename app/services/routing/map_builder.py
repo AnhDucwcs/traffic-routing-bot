@@ -1,5 +1,6 @@
 import time
 import pickle
+import json
 from pathlib import Path
 from app.core.logger import logger
 
@@ -21,3 +22,16 @@ def load_routing_graph():
     end_time = time.perf_counter()
     logger.info(f"Routing graph loaded in {end_time - start_time:.2f} seconds.")
     return routing_graph
+
+def load_segment_lengths():
+    logger.info("Loading segment lengths from disk...")
+    
+    curent_dir = Path(__file__).resolve().parent
+    src_dir = curent_dir.parent.parent.parent
+    lengths_path = src_dir / "data" / "segment_lengths_v2.pkl"
+    
+    with open(lengths_path, 'r', encoding='utf-8') as f:
+            segment_lengths = json.load(f)
+    
+    logger.info(f"Segment lengths loaded.")
+    return segment_lengths

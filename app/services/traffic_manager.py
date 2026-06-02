@@ -12,13 +12,15 @@ class TrafficManager:
         # Khóa chặn ghi để chống đụng độ RAM giữa thao tác Read (A*) và Write (Crawler)
         self.write_lock = threading.Lock()
 
-    def build_index(self, segments_path: Path):
-        logger.info(f"Building Traffic Index from {segments_path}...")
+    def build_index(self, segment_lengths):
+        """
+        Hàm này biến đổi segment_lengths (được build từ build_offline_graph.py) 
+        thành một từ điển để tăng tốc độ tra cứu.
+        """
         
-        with open(segments_path, 'r', encoding='utf-8') as f:
-            segments = json.load(f)
+        logger.info(f"Building Traffic Index...")
 
-        for segment_id, data in segments.items():
+        for segment_id, data in segment_lengths.items():
             nodes = data.get('osmnx_nodes', [])
             edges_list = []
             
