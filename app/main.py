@@ -42,6 +42,7 @@ async def lifespan(app: fastapi.FastAPI):
     app.state.crawler = BusCrawler(segment_lengths, route_stop_sequence)
 
     # Start crawler scheduler
+    await app.state.hot_storage.ensure_indexes()
     app.state.crawler_scheduler = CrawlerScheduler(
         crawler=app.state.crawler,
         traffic_manager=app.state.traffic_manager,

@@ -13,9 +13,8 @@ class HotStorageManager:
         self.client = AsyncIOMotorClient(settings.MONGO_URI, tlsCAFile=certifi.where())
         self.db = self.client["traffic_db"]
         self.collection = self.db["bus_speeds"]
-        self._ensure_indexes()
 
-    async def _ensure_indexes(self):
+    async def ensure_indexes(self):
         try:
             # 1. Compound Index
             await self.collection.create_index(
