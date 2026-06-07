@@ -45,7 +45,7 @@ async def process_routing_background(payload: RoutingRequest, app_state):
     end_lat = payload.destination.latitude
     end_lng = payload.destination.longitude
 
-    graph = app_state.graph
+    graph = app_state.traffic_manager.G
     path, distance_km, estimated_time_min = await app_state.routing_service.find_path(graph, start_lat, start_lng, end_lat, end_lng)
     
     # Đo thời gian
