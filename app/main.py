@@ -1,6 +1,7 @@
 import asyncio
 import fastapi
 from fastapi.staticfiles import StaticFiles
+from cachetools import TTLCache
 import psutil
 import os
 from loguru import logger
@@ -28,6 +29,7 @@ async def lifespan(app: fastapi.FastAPI):
     
     app.state.graph = load_routing_graph()
     app.state.traffic_manager = TrafficManager(app.state.graph)
+    app.state.route_results = TTLCache(maxsize=1000, ttl=300)  
     app.state.hot_storage = HotStorageManager()
     app.state.cold_storage = ColdStorageManager(sync_interval_minutes=60)
     segment_lengths = load_segment_lengths()
@@ -64,6 +66,7 @@ async def lifespan(app: fastapi.FastAPI):
     del app.state.graph
     del app.state.traffic_manager
     del app.state.route_stop_sequence
+    del app.state.route_results
 
 app = fastapi.FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 app.include_router(router)
