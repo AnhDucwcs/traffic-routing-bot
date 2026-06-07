@@ -17,6 +17,7 @@ from app.core.logger import logger
 
 router = APIRouter()
 
+
 def _validate_callback_url(callback_url: str | None):
     if not callback_url:
         raise HTTPException(status_code=400, detail="Thiếu callbackUrl")
