@@ -201,7 +201,7 @@ class BusCrawler:
         start_time = time.perf_counter()
         
         queue = asyncio.Queue()
-        semaphore = asyncio.Semaphore(10)
+        semaphore = asyncio.Semaphore(20)
         hot_results = []
         cold_results = []
         
@@ -266,7 +266,7 @@ class BusCrawler:
             for c in consumers:
                 c.cancel()
         if hot_results or cold_results:
-            logger.info("Không thu hoạch được dữ liệu.")
+            logger.info(f"Không thu hoạch được dữ liệu. Hot results: {len(hot_results)}, Cold results: {len(cold_results)}")
 
         end_time = time.perf_counter()
         logger.info(f"Thời gian thực hiện chiến dịch: {end_time - start_time:.2f} giây")
