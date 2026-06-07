@@ -5,23 +5,24 @@ import math
 from pyproj import Transformer
 from app.core.logger import logger
 
-def calc_euclidean(u, v, graph):
+def calc_time_from_euclidean(u, v, graph):
     x1, y1 = graph.nodes[u]['x'], graph.nodes[u]['y']
     x2, y2 = graph.nodes[v]['x'], graph.nodes[v]['y']
     h = math.hypot(x2 - x1, y2 - y1)
-    return h
+    t = h / 12.5  # Tốc độ là 45km/h
+    return t
 
-async def find_shortest_path(graph, start_lat: float, start_lng: float, end_lat: float, end_lng: float):
+async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float, end_lat: float, end_lng: float):
     # Initialize transformer to convert from WGS84 (lat/lng) to the graph's CRS (UTM)
     # Note: always_xy=True ensures that we input (lng, lat) and get (x, y) in the projected CRS
-    transformer = Transformer.from_crs("EPSG:4326", graph.graph['crs'], always_xy=True)
+    transformer = Transformer.from_crs("EPSG:4326", traffic_manager.G.graph['crs'], always_xy=True)
     
     start_x, start_y = transformer.transform(start_lng, start_lat)
     end_x, end_y = transformer.transform(end_lng, end_lat)
 
     # Find nearest nodes in the graph to the start and end coordinates
-    start_node = ox.distance.nearest_nodes(graph, X=start_x, Y=start_y)
-    end_node = ox.distance.nearest_nodes(graph, X=end_x, Y=end_y)
+    start_node = ox.distance.nearest_nodes(traffic_manager.G, X=start_x, Y=start_y)
+    end_node = ox.distance.nearest_nodes(traffic_manager.G, X=end_x, Y=end_y)
     logger.info(f"Start node: {start_node}, End node: {end_node}")
 
     if start_node == end_node:
@@ -29,17 +30,28 @@ async def find_shortest_path(graph, start_lat: float, start_lng: float, end_lat:
         return []
 
     # Since A* in networkx expects a heuristic function with signature heuristic(u, v), we use a lambda to pass the graph
-    heuristic_func = lambda u, v: calc_euclidean(u, v, graph)
+    heuristic_func = lambda u, v: calc_time_from_euclidean(u, v, traffic_manager.G)
 
     # Run A* in a separate thread to avoid blocking the event loop, since it's CPU-bound
     try:
         path = await asyncio.to_thread(
-            nx.astar_path, graph, start_node, end_node, heuristic=heuristic_func, weight="length"
+            nx.astar_path, traffic_manager.G, start_node, end_node, heuristic=heuristic_func, weight="current_weight"
         )
-        distance_km = sum(graph.edges[path[i], path[i+1], 0]['length'] for i in range(len(path)-1)) / 1000  # Convert to km
-        distance_km = round(distance_km, 2)
-        estimated_time_min = (distance_km / 35) * 60  # Assuming average speed of 35 km/h, convert to minutes
-        estimated_time_min = round(estimated_time_min, 2)
+        
+        total_distance_m = 0
+        total_time_s = 0
+        
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i + 1]
+            edges = traffic_manager.G[u][v]
+            
+            best_edge = min(edges.values(), key=lambda x: x.get('current_weight', float('inf')))
+            
+            total_distance_m += best_edge.get('length', 0)
+            total_time_s += best_edge.get('current_weight', 0)
+        
+        distance_km = round(total_distance_m / 1000, 2)
+        estimated_time_min = round(total_time_s / 60, 2)
         logger.info(f"Found path with distance: {distance_km} km, estimated time: {estimated_time_min} minutes")
         return path, distance_km, estimated_time_min
     except nx.NetworkXNoPath:
@@ -49,14 +61,14 @@ async def find_shortest_path(graph, start_lat: float, start_lng: float, end_lat:
         logger.exception(f"Lỗi: {e}")
         return []
     
-def generate_google_maps_url(graph, path):
+def generate_google_maps_url(traffic_manager, path):
     if not path:
         return None
     
-    transformer_back = Transformer.from_crs(graph.graph['crs'], "EPSG:4326", always_xy=True)
+    transformer_back = Transformer.from_crs(traffic_manager.G.graph['crs'], "EPSG:4326", always_xy=True)
     
-    start_lng, start_lat = transformer_back.transform(graph.nodes[path[0]]['x'], graph.nodes[path[0]]['y'])
-    end_lng, end_lat = transformer_back.transform(graph.nodes[path[-1]]['x'], graph.nodes[path[-1]]['y'])
+    start_lng, start_lat = transformer_back.transform(traffic_manager.G.nodes[path[0]]['x'], traffic_manager.G.nodes[path[0]]['y'])
+    end_lng, end_lat = transformer_back.transform(traffic_manager.G.nodes[path[-1]]['x'], traffic_manager.G.nodes[path[-1]]['y'])
     
     # Choosing up to 8 waypoints from the internal nodes of the path
     internal_nodes = path[1:-1]
@@ -65,7 +77,7 @@ def generate_google_maps_url(graph, path):
         step = max(1, len(internal_nodes) // 8)
         selected_nodes = internal_nodes[::step][:8]
         for node in selected_nodes:
-            x, y = graph.nodes[node]['x'], graph.nodes[node]['y']
+            x, y = traffic_manager.G.nodes[node]['x'], traffic_manager.G.nodes[node]['y']
             lng, lat = transformer_back.transform(x, y)
             waypoints_coords.append(f"{lat},{lng}")
     

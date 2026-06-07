@@ -11,11 +11,14 @@ from app.core.config import settings
 from app.core.logger import logger
 
 class BusCrawler:
-    def __init__(self):
+    def __init__(self, segment_lengths, route_stop_sequence):
         self.session = httpx.AsyncClient(timeout=10.0) 
         self.client = MongoClient(settings.MONGO_URI, tlsCAFile=certifi.where())
         self.db = self.client["traffic_db"]
         self.collection = self.db["bus_speeds"]
+        self.bus_states = {}
+        self.segment_lengths = segment_lengths
+        self.route_stop_sequence = route_stop_sequence
 
 
     async def producer_api_1(self, stop_id, queue, semaphore, http_client):
@@ -39,19 +42,42 @@ class BusCrawler:
                     response.raise_for_status()
 
                     data = response.json()
-
+                    crawled_time = datetime.datetime.now().isoformat()
                     if isinstance(data, list):
                         for route in data:
                             route_id = route.get("r")
                             var_id = route.get("v")
                             active_buses = route.get("arrs", [])
+                            selected_buses = None
+                            previous_stop_id = self.route_stop_sequence.get(f"{route_id}_{var_id}_{stop_id}")
                             
-                            if (route_id is not None) and (var_id is not None) and len(active_buses) > 0:
+                            if not previous_stop_id:
+                                continue
+                            
+                            segment_id = f"{previous_stop_id}_{stop_id}"
+                            segment_length = self.segment_lengths.get(segment_id, {}).get("length_m")
+                            
+                            if not segment_length:
+                                continue
+                            
+                            # Lấy các xe buýt gần nhất, tránh lấy các xe quá xa gây nhiễu dữ liệu
+                            has_bus_nearby = False
+                            for bus in active_buses:
+                                d = float(bus.get("d", 0.0))
+                                if 30 < d <= segment_length:  # Chỉ quan tâm xe buýt trong phạm vi độ dài segment
+                                    has_bus_nearby = True
+                                    selected_buses = bus
+                                    break
+                            
+                            if (route_id is not None) and (var_id is not None) and has_bus_nearby:
                                 # Nếu trạm này có xe buýt nào đang chuẩn bị tới, thì nhét thông tin vào Queue để Lính Tỉa bắn tiếp
                                 await queue.put({
                                     "route_id": str(route_id),
                                     "variation_id": str(var_id),
-                                    "stop_id": str(stop_id)
+                                    "stop_id": str(stop_id),
+                                    "segment_id": segment_id,
+                                    "selected_bus": selected_buses,
+                                    "crawled_time": crawled_time
                                 })
                     break  # Nếu thành công thì thoát vòng retry
                 except httpx.ReadTimeout:
@@ -63,7 +89,7 @@ class BusCrawler:
                     
             # CHỐNG BAN IP: Radar quét xong phải nghỉ ngơi một chút trước khi chuyển trạm
             await asyncio.sleep(random.uniform(0.1, 0.3))
-    async def consumer_api_2(self, worker_id, queue, http_client, all_results):
+    async def consumer_api_2(self, worker_id, queue, http_client, hot_results, cold_results):
         while True:
             # Lấy mục tiêu từ Hộp thư (Nếu hộp thư trống, lính sẽ tự động đứng chờ)
             task = await queue.get()
@@ -71,64 +97,113 @@ class BusCrawler:
             route_id = task["route_id"]
             var_id = task["variation_id"]
             stop_id = task["stop_id"]
-            
+            segment_id = task["segment_id"]
+            current_stop_bus = task.get("selected_bus")
+            crawled_time = task.get("crawled_time")
+            calculated_speed_kmh = 0
             try:
-                url_api_2 = f"https://apicms.ebms.vn/prediction/{route_id}/{var_id}/{stop_id}/predictnextstops/5"
+                
+                if current_stop_bus and segment_id:
+                    vehicle_id = current_stop_bus.get("v")
+                    current_d = float(current_stop_bus.get("d", 0.0))
+                    now_timestamp = datetime.datetime.now().timestamp()
+                    
+                    # 1. Tính toán bằng Tracking Cache
+                    if vehicle_id in self.bus_states:
+                        old_state = self.bus_states[vehicle_id]
+                        delta_d = old_state["d"] - current_d 
+                        delta_t = now_timestamp - old_state["time"]
+                        
+                        # Điều kiện sống còn: Xe tiến lên (delta_d > 0) và đủ độ trễ (> 30s)
+                        if delta_d > 0 and delta_t > 30:
+                            calculated_speed_kmh = (delta_d / delta_t) * 3.6
+                            hot_results.append({
+                                "segment_id": segment_id,
+                                "speed_kmh": round(calculated_speed_kmh, 2),
+                                "timestamp": crawled_time
+                            })
+                            
+                    # 2. Cập nhật Radar cho chu kỳ cào tiếp theo
+                    self.bus_states[vehicle_id] = {
+                        "d": current_d,
+                        "time": now_timestamp
+                    }
+                
+                url_api_2 = f"https://apicms.ebms.vn/prediction/{route_id}/{var_id}/{stop_id}/predictnextstops/1"
                 response = await http_client.get(url_api_2)
                 
                 if response.status_code == 200:
                     data = response.json()
-                    if not data or not data[0].get("arrs"):
+                    if not data or not isinstance(data, list) or not data[0].get("arrs"):
                         continue
-                    if not data[0].get("arrs"):
+                    buses = data[0]["arrs"]
+                    next_stop_id = data[0].get("s")
+                    crawl_time = datetime.datetime.now().isoformat()
+                    next_stop_bus = None
+                    if not next_stop_bus:
                         continue
-                    if data and isinstance(data, list) and len(data) > 0:
-                        try:
-                            base_d = data[0]["arrs"][0]["d"]
-                            base_t = data[0]["arrs"][0]["t"]
-                            base_stop_id = str(data[0].get("s") or "")
-                            crawl_time = datetime.datetime.now()
+                    
+                    for bus in buses:
+                        if bus.get("v") == current_stop_bus.get("v"):
+                            next_stop_bus = bus
+                            break
+                    
+                    if not next_stop_bus:
+                        continue
 
-                            for i in range(1, len(data)):
-                                if len(data[i].get("arrs", [])) == 0:
-                                    continue
-                                
-                                curent_d = data[i]["arrs"][0]["d"]
-                                curent_t = data[i]["arrs"][0]["t"]
-                                next_stop_id = str(data[i].get("s") or "")
-                                
-                                delta_d = curent_d - base_d
-                                delta_t = curent_t - base_t
-                                
-                                if delta_d > 0 and delta_t > 0:
-                                    v_ms = delta_d / delta_t
-                                    all_results.append({
-                                        "from_stop_id": base_stop_id,
-                                        "next_stop_id": next_stop_id,
-                                        "distance_to_next_stop": curent_d,
-                                        "speed_ms": round(v_ms, 2),
-                                        "timestamp": crawl_time
-                                    })
-                                
-                                base_d = curent_d
-                                base_t = curent_t
-                                base_stop_id = next_stop_id
-                        except (IndexError, KeyError):
-                            pass
-                            
+                    instant_speed_kmh = float(current_stop_bus.get("s", 0.0))
+                    distance_to_current_stop = float(current_stop_bus.get("d", 0.0))
+                    time_to_current_stop = float(current_stop_bus.get("t", 0.0))
+                    distance_to_next_stop = float(next_stop_bus.get("d", 0.0))
+                    time_to_next_stop = float(next_stop_bus.get("t", 0.0))
+                        
+                    cold_results.append({
+                        "timestamp": crawl_time,
+                        "route_id": str(route_id),
+                        "var_id": str(var_id),
+                        "vehicle_id": str(current_stop_bus.get("v")),
+                        "to_current_stop_id": str(stop_id),
+                        "to_next_stop_id": str(next_stop_id),
+                        "distance_to_current_stop": round(distance_to_current_stop, 2),
+                        "time_to_current_stop": round(time_to_current_stop, 2),
+                        "distance_to_next_stop": round(distance_to_next_stop, 2),
+                        "time_to_next_stop": round(time_to_next_stop, 2),
+                        "instant_speed_kmh": instant_speed_kmh,
+                        "calculated_speed_kmh": round(calculated_speed_kmh, 2)
+                    })
+                    
             except Exception as e:
                 logger.error(f"[Lính Tỉa {worker_id}] Bắn trượt mục tiêu (route_id={route_id}, var_id={var_id}, stop_id={stop_id})")
 
             finally:
                 queue.task_done()
-                await asyncio.sleep(random.uniform(0.01, 0.05))  # Giúp giảm tải cho API và tránh bị ban IP
+    def _cleanup_stale_states(self, max_age_seconds=1800):
+        """
+        Dọn dẹp các xe không cập nhật trạng thái trong vòng 30 phút (1800 giây).
+        """
+        now = datetime.datetime.now().timestamp()
+        
+        # Bắt buộc phải gom các key cần xóa vào list trước
+        # Nếu xóa trực tiếp trong lúc đang lặp sẽ gây lỗi "dictionary changed size during iteration"
+        stale_keys = [
+            vid for vid, state in self.bus_states.items() 
+            if (now - state["time"]) > max_age_seconds
+        ]
+        
+        for key in stale_keys:
+            del self.bus_states[key]
+            
+        if stale_keys:
+            logger.info(f"[Radar Cleanup] Đã giải phóng {len(stale_keys)} xe mất tín hiệu khỏi RAM.")
     async def run_campaign(self):
+        self._cleanup_stale_states()  # Dọn dẹp trạng thái cũ trước khi bắt đầu chiến dịch mới
         logger.info(f"BẮT ĐẦU CHIẾN DỊCH QUÉT LÚC: {datetime.datetime.now()}")
         start_time = time.perf_counter()
         
         queue = asyncio.Queue()
         semaphore = asyncio.Semaphore(10)
-        all_results = []
+        hot_results = []
+        cold_results = []
         
         try:
             curent_dir = Path(__file__).resolve().parent
@@ -167,7 +242,7 @@ class BusCrawler:
             client_kwargs["proxy"] = proxy_url
 
         async with httpx.AsyncClient(**client_kwargs) as http_client:
-            consumers = [asyncio.create_task(self.consumer_api_2(i, queue, http_client, all_results)) for i in range(10)]
+            consumers = [asyncio.create_task(self.consumer_api_2(i, queue, http_client, hot_results, cold_results)) for i in range(10)]
             total_stops = len(stop_ids)
             completed = 0
             next_log_pct = 10.0    
@@ -190,13 +265,9 @@ class BusCrawler:
             await queue.join() # Đợi cho đến khi tất cả các mục tiêu trong Queue được xử lý xong
             for c in consumers:
                 c.cancel()
-                
-        if all_results:
-            self.collection.insert_many(all_results)
-            logger.info(f"Đã đổ {len(all_results)} kết quả vào MongoDB!")
-        else:
+        if hot_results or cold_results:
             logger.info("Không thu hoạch được dữ liệu.")
 
         end_time = time.perf_counter()
         logger.info(f"Thời gian thực hiện chiến dịch: {end_time - start_time:.2f} giây")
-        return
+        return hot_results, cold_results
