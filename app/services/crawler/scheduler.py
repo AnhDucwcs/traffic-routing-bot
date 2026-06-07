@@ -35,10 +35,11 @@ class CrawlerScheduler:
             while True:
                 now_vn = datetime.now(vn_tz)
                 current_hour = now_vn.hour
+                current_minute = now_vn.minute
                 should_crawl = False
 
-                if 22 <= current_hour <= 23 or 0 <= current_hour < 4:
-                    sleep_time = 3600
+                if (current_hour == 21 and current_minute > 30) or (22 <= current_hour <= 23) or (0 <= current_hour < 5) or (current_hour == 5 and current_minute < 30):
+                    sleep_time = 1800
                 elif current_hour in [6, 7, 8, 16, 17, 18]:
                     sleep_time = 120
                     should_crawl = True

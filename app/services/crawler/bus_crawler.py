@@ -242,7 +242,7 @@ class BusCrawler:
             client_kwargs["proxy"] = proxy_url
 
         async with httpx.AsyncClient(**client_kwargs) as http_client:
-            consumers = [asyncio.create_task(self.consumer_api_2(i, queue, http_client, hot_results, cold_results)) for i in range(10)]
+            consumers = [asyncio.create_task(self.consumer_api_2(i, queue, http_client, hot_results, cold_results)) for i in range(15)]
             total_stops = len(stop_ids)
             completed = 0
             next_log_pct = 10.0    
