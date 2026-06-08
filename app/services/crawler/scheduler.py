@@ -19,13 +19,18 @@ class CrawlerScheduler:
             speed = item['speed_kmh']
             segment_id = item['segment_id']
             
-            penalty = 1.0
             if speed < 5.0:
-                penalty = 5.0
+                penalty = 4.0
             elif speed < 10.0:
                 penalty = 2.5
             elif speed < 15.0:
                 penalty = 1.5
+            elif speed > 40.0:
+                penalty = 0.7
+            elif speed > 30.0:
+                penalty = 0.85
+            else:
+                penalty = 1.0
                 
             self.traffic_manager.apply_traffic_penalty(segment_id, penalty)
 

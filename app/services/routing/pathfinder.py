@@ -9,7 +9,7 @@ def calc_time_from_euclidean(u, v, graph):
     x1, y1 = graph.nodes[u]['x'], graph.nodes[u]['y']
     x2, y2 = graph.nodes[v]['x'], graph.nodes[v]['y']
     h = math.hypot(x2 - x1, y2 - y1)
-    t = h / 12.5  # Tốc độ là 45km/h
+    t = h / 22.2  # Tốc độ là 80km/h
     return t
 
 async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float, end_lat: float, end_lng: float):

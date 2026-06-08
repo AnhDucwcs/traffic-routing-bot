@@ -38,7 +38,7 @@ class TrafficManager:
             
         logger.info(f"Traffic Index được xây dựng với {len(self.segment_index)} bus segments.")
 
-    def apply_traffic_penalty(self, segment_id: str, penalty_factor: float, spillover_alpha: float = 0.4):
+    def apply_traffic_penalty(self, segment_id: str, penalty_factor: float, spillover_alpha: float = 0.35):
         """
         Crawler gọi hàm này để cập nhật trọng số kẹt xe.
         """
@@ -53,7 +53,10 @@ class TrafficManager:
                 self.G[u][v][k]['current_weight'] = base_time * penalty_factor
 
                 # Hiệu ứng tràn (Spillover) vào hẻm
-                spillover_penalty = 1 + (penalty_factor - 1) * spillover_alpha
+                if penalty_factor > 1.0:
+                    spillover_penalty = 1 + (penalty_factor - 1) * spillover_alpha
+                else:
+                    spillover_penalty = 1.0
                 
                 for node in (u, v):
                     for neighbor in self.G.successors(node):
@@ -65,7 +68,11 @@ class TrafficManager:
                             
                             if not edge_data.get('is_bus_route', False):
                                 neighbor_base = edge_data.get('base_time', 10.0)
-                                edge_data['current_weight'] = neighbor_base * spillover_penalty
+                                new_weight = neighbor_base * spillover_penalty
+                                
+                                # Chỉ cập nhật nếu trọng số tràn lớn hơn trọng số hiện tại của hẻm đó
+                                if edge_data.get('current_weight', neighbor_base) < new_weight:
+                                    edge_data['current_weight'] = new_weight
 
     def reset_traffic(self):
         """Reset toàn bộ về base_time"""
