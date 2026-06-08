@@ -104,13 +104,17 @@ class BusCrawler:
             try:
                 
                 if current_stop_bus and segment_id:
-                    if 0.0 < instant_speed_kmh < 80.0:
-                        if segment_id not in hot_results_dict:
-                            hot_results_dict[segment_id] = []
-                        hot_results_dict[segment_id].append({
-                            "instant_speed_kmh": instant_speed_kmh,
-                            "crawled_time": crawled_time
-                        })
+                    if instant_speed_kmh < 80.0:
+                        if instant_speed_kmh == 0.0 and current_stop_bus.get("d") <= 60.0:
+                            # Xe buýt đang dừng đỗ tại trạm, không tính vào hot segment
+                            pass
+                        else:
+                            if segment_id not in hot_results_dict:
+                                hot_results_dict[segment_id] = []
+                            hot_results_dict[segment_id].append({
+                                "instant_speed_kmh": instant_speed_kmh,
+                                "crawled_time": crawled_time
+                            })
                 
                 url_api_2 = f"https://apicms.ebms.vn/prediction/{route_id}/{var_id}/{stop_id}/predictnextstops/1"
                 response = await http_client.get(url_api_2)
