@@ -18,6 +18,8 @@ class RoutingRequest(BaseModel):
         validate_by_name = True
 
 class RoutingResponse(BaseModel):
+    user_id: str = Field(..., alias="userId", description="ID người dùng")
+    conversation_id: str = Field(..., alias="conversationId")
     status: Literal["success", "error", "pending"]
     message: str
     distance_km: float | None = None   

@@ -34,6 +34,8 @@ async def health_check():
 async def process_routing_background(payload: RoutingRequest, app_state):
     logger.info(f"Bắt đầu xử lý ngầm: Conversation {payload.conversation_id}")
     start_time = time.perf_counter()
+    user_id = payload.user_id
+    conversation_id = payload.conversation_id
     
     # 1. Lấy tọa độ từ payload
     start_lat = payload.origin.latitude
@@ -49,7 +51,7 @@ async def process_routing_background(payload: RoutingRequest, app_state):
     logger.info(f"Tính toán lộ trình mất {execution_time:.4f} giây")
 
     if path is None:
-        data = create_error_response("Không tìm thấy lộ trình phù hợp.")
+        data = create_error_response(user_id, conversation_id, "Không tìm thấy lộ trình phù hợp.")
     else:
         url = app_state.routing_service.generate_google_maps_url(traffic_manager, path)
         geojson = app_state.routing_service.to_geojson(traffic_manager, path)
@@ -57,7 +59,7 @@ async def process_routing_background(payload: RoutingRequest, app_state):
         app_state.route_results[route_id] = {
             "geojson": geojson,
         }
-        data = create_success_response(geojson, url, route_id, distance_km, estimated_time_min)
+        data = create_success_response(user_id, conversation_id, geojson, url, route_id, distance_km, estimated_time_min)
 
     response_payload = data.model_dump()
  
