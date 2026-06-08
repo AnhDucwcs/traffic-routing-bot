@@ -140,8 +140,6 @@ class BusCrawler:
                     next_stop_id = data[0].get("s")
                     crawl_time = datetime.datetime.now().isoformat()
                     next_stop_bus = None
-                    if not next_stop_bus:
-                        continue
                     
                     for bus in buses:
                         if bus.get("v") == current_stop_bus.get("v"):
