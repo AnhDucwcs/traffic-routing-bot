@@ -26,11 +26,18 @@ class TrafficManager:
                 u = nodes[i]
                 v = nodes[i + 1]
                 
-                # Kiểm tra cạnh có tồn tại không
+                #Tương tự, ở đây tôi cũng sẽ kiểm tra 2 chiều để tránh bị bỏ sót khi cập nhật trọng số
+                # Cạnh xuôi
                 if self.G.has_edge(u, v):
                     for k in self.G[u][v]:
                         if self.G[u][v][k].get('is_bus_route', False):
                             edges_list.append((u, v, k))
+                # Cạnh ngược
+                elif self.G.has_edge(v, u):
+                    for k in self.G[v][u]:
+                        if self.G[v][u][k].get('is_bus_route', False):
+                            # Chú ý: Đưa cặp (v, u) vào danh sách chứ không phải (u, v)
+                            edges_list.append((v, u, k))
             
             self.segment_index[segment_id] = edges_list
             

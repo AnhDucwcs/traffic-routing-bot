@@ -78,12 +78,19 @@ def bake_graph_brain():
             u = nodes[i]
             v = nodes[i + 1]
 
-            # Kiểm tra xem cạnh này có tồn tại trong đồ thị không
+            # Kiểm tra xem cạnh này có tồn tại xuôi chiều không
+            # Giả sử con đường đó là 2 chiều, có thể dữ liệu OSM chỉ lưu 1 chiều
+            # Tôi sẽ coi như cả 2 chiều đều là đường xe buýt nếu một trong hai chiều có tồn tại trong đồ thị
             if G.has_edge(u, v):
-                # MultiDiGraph có thể có nhiều nhánh song song giữa u và v (key=0, key=1...)
                 for k in G[u][v]:
-                    if not G[u][v][k]['is_bus_route']:
+                    if not G[u][v][k].get('is_bus_route', False):
                         G[u][v][k]['is_bus_route'] = True
+                        bus_edges_count += 1
+            # FALLBACK: Nếu không có xuôi chiều, kiểm tra ngược chiều
+            elif G.has_edge(v, u):
+                for k in G[v][u]:
+                    if not G[v][u][k].get('is_bus_route', False):
+                        G[v][u][k]['is_bus_route'] = True
                         bus_edges_count += 1
 
     print(f"Đã đánh dấu {bus_edges_count} đoạn đường thuộc mạng lưới xe buýt.")
