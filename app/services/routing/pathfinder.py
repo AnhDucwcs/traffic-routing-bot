@@ -16,16 +16,9 @@ def calc_time_from_euclidean(u, v, graph):
     return t
 
 async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float, end_lat: float, end_lng: float):
-    # Initialize transformer to convert from WGS84 (lat/lng) to the graph's CRS (UTM)
-    # Note: always_xy=True ensures that we input (lng, lat) and get (x, y) in the projected CRS
-    transformer = Transformer.from_crs("EPSG:4326", traffic_manager.G.graph['crs'], always_xy=True)
-    
-    start_x, start_y = transformer.transform(start_lng, start_lat)
-    end_x, end_y = transformer.transform(end_lng, end_lat)
-
     # Find nearest nodes in the graph to the start and end coordinates
-    start_node = ox.distance.nearest_nodes(traffic_manager.G, X=start_x, Y=start_y)
-    end_node = ox.distance.nearest_nodes(traffic_manager.G, X=end_x, Y=end_y)
+    start_node = ox.distance.nearest_nodes(traffic_manager.G, X=start_lng, Y=start_lat)
+    end_node = ox.distance.nearest_nodes(traffic_manager.G, X=end_lng, Y=end_lat)
     logger.info(f"Start node: {start_node}, End node: {end_node}")
 
     if start_node == end_node:
@@ -38,7 +31,12 @@ async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float
     # Run A* in a separate thread to avoid blocking the event loop, since it's CPU-bound
     try:
         path = await asyncio.to_thread(
-            nx.astar_path, traffic_manager.G, start_node, end_node, heuristic=heuristic_func, weight="current_weight"
+            nx.astar_path, 
+            traffic_manager.G, 
+            start_node, 
+            end_node, 
+            heuristic=heuristic_func, 
+            weight="current_weight"
         )
         
         total_distance_m = 0
@@ -59,10 +57,10 @@ async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float
         return path, distance_km, estimated_time_min
     except nx.NetworkXNoPath:
         logger.info("No path found between the specified nodes.")
-        return []
+        return None, None, None
     except Exception as e:
         logger.exception(f"Lỗi: {e}")
-        return []
+        return None, None, None
     
 def calculate_angle(p1, p2, p3):
     x1, y1 = p1
@@ -87,7 +85,7 @@ def optimize_waypoints_for_google_maps(path_coords, max_waypoints=8):
     for i in range(1, len(path_coords) - 1):
         angle = calculate_angle(path_coords[i - 1], path_coords[i], path_coords[i + 1])
         if angle > WAYPOINT_ANGLE_THRESHOLD:  # Threshold for a "turn"
-            turn_points.append((i, angle))
+            turn_points.append((i, path_coords[i - 1]))
     
     filtered_points = []
     last_added_idx = -99
@@ -110,12 +108,10 @@ def generate_google_maps_url(traffic_manager, path):
     if not path:
         return None
     
-    transformer_back = Transformer.from_crs(traffic_manager.G.graph['crs'], "EPSG:4326", always_xy=True)
-    
     path_coords = []
     for node in path:
-        x, y = traffic_manager.G.nodes[node]['x'], traffic_manager.G.nodes[node]['y']
-        lng, lat = transformer_back.transform(x, y)
+        lng = traffic_manager.G.nodes[node]['x']
+        lat = traffic_manager.G.nodes[node]['y']
         path_coords.append((lat, lng)) # Google Maps dùng định dạng Lat, Lng
     
     start_lat, start_lng = path_coords[0]

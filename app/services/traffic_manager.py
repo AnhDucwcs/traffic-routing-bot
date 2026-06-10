@@ -38,7 +38,7 @@ class TrafficManager:
             
         logger.info(f"Traffic Index được xây dựng với {len(self.segment_index)} bus segments.")
 
-    def apply_traffic_penalty(self, segment_id: str, penalty_factor: float, spillover_alpha: float = 0.35):
+    def apply_traffic_penalty(self, segment_id: str, penalty_factor: float, spillover_alpha: float = 0.15):
         """
         Crawler gọi hàm này để cập nhật trọng số kẹt xe.
         """
@@ -48,6 +48,7 @@ class TrafficManager:
 
         # Bật khóa chặn: Đợi update xong thì A* mới được đọc
         with self.write_lock:
+            logger.info(f"Applying traffic penalty: Segment {segment_id}, Penalty Factor: {penalty_factor}, Affected Edges: {len(target_edges)}")
             for u, v, k in target_edges:
                 base_time = self.G[u][v][k].get('base_time', 10.0)
                 self.G[u][v][k]['current_weight'] = base_time * penalty_factor
