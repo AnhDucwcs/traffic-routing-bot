@@ -48,7 +48,7 @@ def _process_segment(item):
 
 def map_segments_to_graph():
     src_dir = pathlib.Path(__file__).parent.parent
-    graph_file = src_dir / "data" / "hcmc_routing_brain.pkl"
+    graph_file = src_dir / "data" / "hcmc_routing_brain_v1.pkl"
     segments_file = src_dir / "data" / "segment_lengths_v1.json"
     output_file = src_dir / "data" / "segment_lengths_v2.json"
 

@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 def bake_graph_brain():
     src_dir = pathlib.Path(__file__).parent.parent
-    graph_file = src_dir / "data" / "hcmc_routing_brain.pkl"
+    graph_file = src_dir / "data" / "hcmc_routing_brain_v1.pkl"
     segments_file = src_dir / "data" / "segment_lengths_v2.json"
     output_file = src_dir / "data" / "hcmc_routing_brain_v2.pkl"
     
@@ -22,17 +22,25 @@ def bake_graph_brain():
         if isinstance(hw, list): 
             hw = hw[0]
 
-        # Phân loại vận tốc (km/h)
-        if hw in ['trunk', 'trunk_link', 'primary', 'primary_link']:
-            speed_kmh = 45.0
-        elif hw in ['secondary', 'secondary_link']:
-            speed_kmh = 40.0
-        elif hw in ['tertiary', 'tertiary_link']:
-            speed_kmh = 35.0
-        elif hw in ['residential', 'living_street']:
-            speed_kmh = 25.0
-        else:
-            speed_kmh = 20.0
+        maxspeed = data.get('maxspeed', None)
+        if isinstance(maxspeed, list):
+            maxspeed = maxspeed[0]
+            
+        try:
+            # Ép kiểu an toàn (OSM đôi khi lưu chuỗi như '50', '60')
+            speed_kmh = float(maxspeed)
+        except (TypeError, ValueError):
+            # 2. Fallback: Nếu không có maxspeed, tự nội suy từ loại đường
+            if hw in ['trunk', 'trunk_link', 'primary', 'primary_link']:
+                speed_kmh = 45.0
+            elif hw in ['secondary', 'secondary_link']:
+                speed_kmh = 40.0
+            elif hw in ['tertiary', 'tertiary_link']:
+                speed_kmh = 35.0
+            elif hw in ['residential', 'living_street']:
+                speed_kmh = 30.0
+            else:
+                speed_kmh = 20.0
 
         # Lấy chiều dài (mét)
         length = data.get('length', 0.0)
