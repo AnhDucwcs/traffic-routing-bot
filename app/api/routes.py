@@ -42,7 +42,7 @@ async def process_routing_background(payload: RoutingRequest, app_state):
     start_lng = payload.origin.longitude
     end_lat = payload.destination.latitude
     end_lng = payload.destination.longitude
-
+    logger.info(f"Yêu cầu lộ trình từ ({start_lat}, {start_lng}) đến ({end_lat}, {end_lng})")
     traffic_manager = app_state.traffic_manager
     path, distance_km, estimated_time_min = await app_state.routing_service.find_path(traffic_manager, start_lat, start_lng, end_lat, end_lng)
 

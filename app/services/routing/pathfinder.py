@@ -19,11 +19,12 @@ async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float
     # Find nearest nodes in the graph to the start and end coordinates
     start_node = ox.distance.nearest_nodes(traffic_manager.G, X=start_lng, Y=start_lat)
     end_node = ox.distance.nearest_nodes(traffic_manager.G, X=end_lng, Y=end_lat)
+    logger.info(f"Nhận được yêu cầu tìm đường từ ({start_lat}, {start_lng}) đến ({end_lat}, {end_lng})")
     logger.info(f"Start node: {start_node}, End node: {end_node}")
 
     if start_node == end_node:
         logger.info("Start and end nodes are the same. No path needed.")
-        return []
+        return None, None, None
 
     # Since A* in networkx expects a heuristic function with signature heuristic(u, v), we use a lambda to pass the graph
     heuristic_func = lambda u, v: calc_time_from_euclidean(u, v, traffic_manager.G)
