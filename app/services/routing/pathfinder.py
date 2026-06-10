@@ -8,6 +8,15 @@ from app.core.logger import logger
 
 WAYPOINT_ANGLE_THRESHOLD: float = 25.0
 
+
+def _get_transformers(graph):
+    graph_crs = graph.graph.get('crs')
+    if not graph_crs or str(graph_crs).upper() == 'EPSG:4326':
+        return None, None
+    to_graph = Transformer.from_crs('EPSG:4326', graph_crs, always_xy=True)
+    to_wgs84 = Transformer.from_crs(graph_crs, 'EPSG:4326', always_xy=True)
+    return to_graph, to_wgs84
+
 def calc_time_from_euclidean(u, v, graph):
     x1, y1 = graph.nodes[u]['x'], graph.nodes[u]['y']
     x2, y2 = graph.nodes[v]['x'], graph.nodes[v]['y']
@@ -16,9 +25,18 @@ def calc_time_from_euclidean(u, v, graph):
     return t
 
 async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float, end_lat: float, end_lng: float):
+    to_graph, _ = _get_transformers(traffic_manager.G)
+
+    if to_graph:
+        start_x, start_y = to_graph.transform(start_lng, start_lat)
+        end_x, end_y = to_graph.transform(end_lng, end_lat)
+    else:
+        start_x, start_y = start_lng, start_lat
+        end_x, end_y = end_lng, end_lat
+
     # Find nearest nodes in the graph to the start and end coordinates
-    start_node = ox.distance.nearest_nodes(traffic_manager.G, X=start_lng, Y=start_lat)
-    end_node = ox.distance.nearest_nodes(traffic_manager.G, X=end_lng, Y=end_lat)
+    start_node = ox.distance.nearest_nodes(traffic_manager.G, X=start_x, Y=start_y)
+    end_node = ox.distance.nearest_nodes(traffic_manager.G, X=end_x, Y=end_y)
     logger.info(f"Nhận được yêu cầu tìm đường từ ({start_lat}, {start_lng}) đến ({end_lat}, {end_lng})")
     logger.info(f"Start node: {start_node}, End node: {end_node}")
 
@@ -109,10 +127,15 @@ def generate_google_maps_url(traffic_manager, path):
     if not path:
         return None
     
+    _, to_wgs84 = _get_transformers(traffic_manager.G)
     path_coords = []
     for node in path:
-        lng = traffic_manager.G.nodes[node]['x']
-        lat = traffic_manager.G.nodes[node]['y']
+        x = traffic_manager.G.nodes[node]['x']
+        y = traffic_manager.G.nodes[node]['y']
+        if to_wgs84:
+            lng, lat = to_wgs84.transform(x, y)
+        else:
+            lng, lat = x, y
         path_coords.append((lat, lng)) # Google Maps dùng định dạng Lat, Lng
     
     start_lat, start_lng = path_coords[0]

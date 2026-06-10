@@ -1,9 +1,7 @@
 import json
 import threading
 from pathlib import Path
-import logging
-
-logger = logging.getLogger(__name__)
+from app.core.logger import logger
 
 class TrafficManager:
     def __init__(self, routing_graph):
@@ -44,6 +42,7 @@ class TrafficManager:
         """
         target_edges = self.segment_index.get(segment_id, [])
         if not target_edges:
+            logger.warning(f"[TrafficManager] Không tìm thấy Cạnh nào khớp với segment_id: {segment_id}")
             return
 
         # Bật khóa chặn: Đợi update xong thì A* mới được đọc
