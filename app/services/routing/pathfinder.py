@@ -109,10 +109,10 @@ def optimize_waypoints_for_google_maps(path_coords, max_waypoints=8):
     filtered_points = []
     last_added_idx = -99
     
-    for idx, pt in enumerate(turn_points):
-        if idx - last_added_idx > 2:
-            filtered_points.append(pt)
-            last_added_idx = idx
+    for node_idx, coord in turn_points:
+        if node_idx - last_added_idx > 2:
+            filtered_points.append(coord)
+            last_added_idx = node_idx
     
     if len(filtered_points) > max_waypoints:
         step = len(filtered_points) / float(max_waypoints)
