@@ -30,21 +30,16 @@ class TrafficManager:
                 # Cạnh xuôi
                 if self.G.has_edge(u, v):
                     for k in self.G[u][v]:
-                        # if self.G[u][v][k].get('is_bus_route', False):
-                        #     edges_list.append((u, v, k))
-                        edges_list.append((u, v, k))
-                        edge_added = True
+                        if self.G[u][v][k].get('is_bus_route', False):
+                            edges_list.append((u, v, k))
                 # Cạnh ngược
                 elif self.G.has_edge(v, u):
                     for k in self.G[v][u]:
-                        # if self.G[v][u][k].get('is_bus_route', False):
-                        #     edges_list.append((v, u, k))
-                        edges_list.append((v, u, k))
-                        edge_added = True
-            
-            # self.segment_index[segment_id] = edges_list
-            if edges_list:
-                self.segment_index[segment_id] = edges_list
+                        if self.G[v][u][k].get('is_bus_route', False):
+                            edges_list.append((v, u, k))
+
+            self.segment_index[segment_id] = edges_list
+
                 
         logger.info(f"Traffic Index được xây dựng với {len(self.segment_index)} bus segments.")
 

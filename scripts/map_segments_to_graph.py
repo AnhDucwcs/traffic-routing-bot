@@ -37,14 +37,45 @@ def _process_segment(item):
 
     raw_nodes = ox.distance.nearest_nodes(WORKER_G, X, Y)
 
+    # 1. Khử trùng lặp các node Map Matching thô liền kề
     clean_nodes = []
     for node in raw_nodes:
         native_node = int(node) 
         if not clean_nodes or native_node != clean_nodes[-1]:
             clean_nodes.append(native_node)
             
+    # 2. BẬT KHỐI NỘI SUY: Trám các giao lộ bị thiếu giữa các tọa độ GPS
+    interpolated_nodes = []
+    for i in range(len(clean_nodes) - 1):
+        u = clean_nodes[i]
+        v = clean_nodes[i + 1]
+        
+        try:
+            # Thử tìm đường đi xuôi chiều nối trực tiếp u -> v
+            path = nx.shortest_path(WORKER_G, source=u, target=v, weight='length')
+            # Thêm chuỗi đường đi vào mảng (bỏ phần tử cuối để tránh trùng lặp với cặp tiếp theo)
+            interpolated_nodes.extend(path[:-1])
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            try:
+                # FALLBACK: Nếu dính đường một chiều bị ngược trên bản đồ OSM, thử tìm đường ngược v -> u
+                path = nx.shortest_path(WORKER_G, source=v, target=u, weight='length')
+                # Đảo ngược chuỗi kết quả lại để giữ đúng hướng di chuyển của tuyến xe
+                interpolated_nodes.extend(path[::-1][:-1])
+            except (nx.NetworkXNoPath, nx.NodeNotFound):
+                # Nếu bế tắc hoàn toàn (lỗi đồ thị cô lập), giữ nguyên node u để bảo toàn dữ liệu gốc
+                interpolated_nodes.append(u)
+                
+    # Đừng quên đóng dấu nút cuối cùng của hành trình
+    if clean_nodes:
+        interpolated_nodes.append(clean_nodes[-1])
 
-    return key, clean_nodes
+    # 3. Lọc lại trùng lặp liền kề một lần cuối để đảm bảo sợi xích node sạch 100%
+    final_nodes = []
+    for node in interpolated_nodes:
+        if not final_nodes or node != final_nodes[-1]:
+            final_nodes.append(node)
+
+    return key, final_nodes
 
 def map_segments_to_graph():
     src_dir = pathlib.Path(__file__).parent.parent
