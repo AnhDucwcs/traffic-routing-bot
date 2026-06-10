@@ -167,7 +167,7 @@ class BusCrawler:
         start_time = time.perf_counter()
         
         queue = asyncio.Queue()
-        semaphore = asyncio.Semaphore(20)
+        semaphore = asyncio.Semaphore(15)
         hot_results_dict = {}
         cold_results = []
         
