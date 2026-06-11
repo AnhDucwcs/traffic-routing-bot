@@ -7,10 +7,6 @@ import uuid
 from urllib.parse import urlparse
 from app.models.schemas import RoutingRequest
 from app.services.response_helper import create_success_response, create_error_response
-import uuid
-from urllib.parse import urlparse
-from app.models.schemas import RoutingRequest
-from app.services.response_helper import create_success_response, create_error_response
 from app.core.config import settings
 from app.core.logger import logger
 
@@ -38,30 +34,32 @@ async def health_check():
 async def process_routing_background(payload: RoutingRequest, app_state):
     logger.info(f"Bắt đầu xử lý ngầm: Conversation {payload.conversation_id}")
     start_time = time.perf_counter()
+    user_id = payload.user_id
+    conversation_id = payload.conversation_id
     
     # 1. Lấy tọa độ từ payload
     start_lat = payload.origin.latitude
     start_lng = payload.origin.longitude
     end_lat = payload.destination.latitude
     end_lng = payload.destination.longitude
+    logger.info(f"Yêu cầu lộ trình từ ({start_lat}, {start_lng}) đến ({end_lat}, {end_lng})")
+    traffic_manager = app_state.traffic_manager
+    path, distance_km, estimated_time_min = await app_state.routing_service.find_path(traffic_manager, start_lat, start_lng, end_lat, end_lng)
 
-    graph = app_state.graph
-    path, distance_km, estimated_time_min = await app_state.routing_service.find_path(graph, start_lat, start_lng, end_lat, end_lng)
-    
     # Đo thời gian
     execution_time = time.perf_counter() - start_time
     logger.info(f"Tính toán lộ trình mất {execution_time:.4f} giây")
 
     if path is None:
-        data = create_error_response("Không tìm thấy lộ trình phù hợp.")
+        data = create_error_response(user_id, conversation_id, "Không tìm thấy lộ trình phù hợp.")
     else:
-        url = app_state.routing_service.generate_google_maps_url(graph, path)
-        geojson = app_state.routing_service.convert_path_to_geojson(graph, path)
+        url = app_state.routing_service.generate_google_maps_url(traffic_manager, path)
+        geojson = app_state.routing_service.to_geojson(traffic_manager, path)
         route_id = str(uuid.uuid4())
         app_state.route_results[route_id] = {
             "geojson": geojson,
         }
-        data = create_success_response(geojson, url, route_id, distance_km, estimated_time_min)
+        data = create_success_response(user_id, conversation_id, geojson, url, route_id, distance_km, estimated_time_min)
 
     response_payload = data.model_dump()
  

@@ -10,7 +10,7 @@ def load_routing_graph():
     
     curent_dir = Path(__file__).resolve().parent
     src_dir = curent_dir.parent.parent.parent
-    graph_path = src_dir / "data" / "hcmc_routing_brain.pkl"
+    graph_path = src_dir / "data" / "hcmc_routing_brain_v2.pkl"
     
     if not graph_path.exists():
         raise FileNotFoundError(f"Routing graph file not found at {graph_path}. Please run the build_offline_graph.py script first.")

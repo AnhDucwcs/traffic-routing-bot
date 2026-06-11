@@ -9,7 +9,7 @@ import osmnx as ox
 from shapely.geometry import LineString
 
 PBF_INPUT = "./data/hcmc_routing_clean.osm.pbf"
-OUTPUT_BRAIN = "./data/hcmc_routing_brain.pkl"
+OUTPUT_BRAIN = "./data/hcmc_routing_brain_v1.pkl"
 OUTPUT_GEOMETRY = "./data/hcmc_geometry_store.feather"
 
 

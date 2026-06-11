@@ -88,8 +88,8 @@ class BusCrawler:
                     break  # Với lỗi khác, không cần retry, thoát luôn
                     
             # CHỐNG BAN IP: Radar quét xong phải nghỉ ngơi một chút trước khi chuyển trạm
-            await asyncio.sleep(random.uniform(0.1, 0.3))
-    async def consumer_api_2(self, worker_id, queue, http_client, hot_results, cold_results):
+            await asyncio.sleep(random.uniform(0.05, 0.1))
+    async def consumer_api_2(self, worker_id, queue, http_client, hot_results_dict, cold_results):
         while True:
             # Lấy mục tiêu từ Hộp thư (Nếu hộp thư trống, lính sẽ tự động đứng chờ)
             task = await queue.get()
@@ -100,34 +100,21 @@ class BusCrawler:
             segment_id = task["segment_id"]
             current_stop_bus = task.get("selected_bus")
             crawled_time = task.get("crawled_time")
-            calculated_speed_kmh = 0
+            instant_speed_kmh = float(current_stop_bus.get("s", 0.0))
             try:
                 
                 if current_stop_bus and segment_id:
-                    vehicle_id = current_stop_bus.get("v")
-                    current_d = float(current_stop_bus.get("d", 0.0))
-                    now_timestamp = datetime.datetime.now().timestamp()
-                    
-                    # 1. Tính toán bằng Tracking Cache
-                    if vehicle_id in self.bus_states:
-                        old_state = self.bus_states[vehicle_id]
-                        delta_d = old_state["d"] - current_d 
-                        delta_t = now_timestamp - old_state["time"]
-                        
-                        # Điều kiện sống còn: Xe tiến lên (delta_d > 0) và đủ độ trễ (> 30s)
-                        if delta_d > 0 and delta_t > 30:
-                            calculated_speed_kmh = (delta_d / delta_t) * 3.6
-                            hot_results.append({
-                                "segment_id": segment_id,
-                                "speed_kmh": round(calculated_speed_kmh, 2),
-                                "timestamp": crawled_time
+                    if instant_speed_kmh < 80.0:
+                        if instant_speed_kmh == 0.0 and current_stop_bus.get("d") <= 60.0:
+                            # Xe buýt đang dừng đỗ tại trạm, không tính vào hot segment
+                            pass
+                        else:
+                            if segment_id not in hot_results_dict:
+                                hot_results_dict[segment_id] = []
+                            hot_results_dict[segment_id].append({
+                                "instant_speed_kmh": instant_speed_kmh,
+                                "crawled_time": crawled_time
                             })
-                            
-                    # 2. Cập nhật Radar cho chu kỳ cào tiếp theo
-                    self.bus_states[vehicle_id] = {
-                        "d": current_d,
-                        "time": now_timestamp
-                    }
                 
                 url_api_2 = f"https://apicms.ebms.vn/prediction/{route_id}/{var_id}/{stop_id}/predictnextstops/1"
                 response = await http_client.get(url_api_2)
@@ -140,8 +127,6 @@ class BusCrawler:
                     next_stop_id = data[0].get("s")
                     crawl_time = datetime.datetime.now().isoformat()
                     next_stop_bus = None
-                    if not next_stop_bus:
-                        continue
                     
                     for bus in buses:
                         if bus.get("v") == current_stop_bus.get("v"):
@@ -151,7 +136,7 @@ class BusCrawler:
                     if not next_stop_bus:
                         continue
 
-                    instant_speed_kmh = float(current_stop_bus.get("s", 0.0))
+                    
                     distance_to_current_stop = float(current_stop_bus.get("d", 0.0))
                     time_to_current_stop = float(current_stop_bus.get("t", 0.0))
                     distance_to_next_stop = float(next_stop_bus.get("d", 0.0))
@@ -169,7 +154,6 @@ class BusCrawler:
                         "distance_to_next_stop": round(distance_to_next_stop, 2),
                         "time_to_next_stop": round(time_to_next_stop, 2),
                         "instant_speed_kmh": instant_speed_kmh,
-                        "calculated_speed_kmh": round(calculated_speed_kmh, 2)
                     })
                     
             except Exception as e:
@@ -177,32 +161,14 @@ class BusCrawler:
 
             finally:
                 queue.task_done()
-    def _cleanup_stale_states(self, max_age_seconds=1800):
-        """
-        Dọn dẹp các xe không cập nhật trạng thái trong vòng 30 phút (1800 giây).
-        """
-        now = datetime.datetime.now().timestamp()
-        
-        # Bắt buộc phải gom các key cần xóa vào list trước
-        # Nếu xóa trực tiếp trong lúc đang lặp sẽ gây lỗi "dictionary changed size during iteration"
-        stale_keys = [
-            vid for vid, state in self.bus_states.items() 
-            if (now - state["time"]) > max_age_seconds
-        ]
-        
-        for key in stale_keys:
-            del self.bus_states[key]
-            
-        if stale_keys:
-            logger.info(f"[Radar Cleanup] Đã giải phóng {len(stale_keys)} xe mất tín hiệu khỏi RAM.")
+
     async def run_campaign(self):
-        self._cleanup_stale_states()  # Dọn dẹp trạng thái cũ trước khi bắt đầu chiến dịch mới
         logger.info(f"BẮT ĐẦU CHIẾN DỊCH QUÉT LÚC: {datetime.datetime.now()}")
         start_time = time.perf_counter()
         
         queue = asyncio.Queue()
-        semaphore = asyncio.Semaphore(10)
-        hot_results = []
+        semaphore = asyncio.Semaphore(15)
+        hot_results_dict = {}
         cold_results = []
         
         try:
@@ -242,7 +208,7 @@ class BusCrawler:
             client_kwargs["proxy"] = proxy_url
 
         async with httpx.AsyncClient(**client_kwargs) as http_client:
-            consumers = [asyncio.create_task(self.consumer_api_2(i, queue, http_client, hot_results, cold_results)) for i in range(10)]
+            consumers = [asyncio.create_task(self.consumer_api_2(i, queue, http_client, hot_results_dict, cold_results)) for i in range(10)]
             total_stops = len(stop_ids)
             completed = 0
             next_log_pct = 10.0    
@@ -250,7 +216,6 @@ class BusCrawler:
             producer_tasks = [asyncio.create_task(self.producer_api_1(sid, queue, semaphore, http_client)) for sid in stop_ids]
             for task in asyncio.as_completed(producer_tasks):
                 await task
-                await asyncio.sleep(0.05)
                 completed += 1
                 progress_pct = (completed / total_stops) * 100 if total_stops else 100.0
 
@@ -265,8 +230,21 @@ class BusCrawler:
             await queue.join() # Đợi cho đến khi tất cả các mục tiêu trong Queue được xử lý xong
             for c in consumers:
                 c.cancel()
+        hot_results = []
+        
+        for seg_id, records in hot_results_dict.items():
+            worst_traffic = min(records, key=lambda x: x["instant_speed_kmh"])
+            
+            hot_results.append({
+                "segment_id": seg_id,
+                "speed_kmh": round(worst_traffic["instant_speed_kmh"], 2),
+                "timestamp": worst_traffic["crawled_time"]
+            })
+            
         if hot_results or cold_results:
-            logger.info("Không thu hoạch được dữ liệu.")
+            logger.info(f"Đã thu hoạch xong: Hot results: {len(hot_results)}, Cold results: {len(cold_results)}")
+        else:
+            logger.info("Không thu hoạch được dữ liệu nào trong chiến dịch này.")
 
         end_time = time.perf_counter()
         logger.info(f"Thời gian thực hiện chiến dịch: {end_time - start_time:.2f} giây")

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Literal
 from pydantic import Field
     
@@ -7,6 +7,7 @@ class Location(BaseModel):
     longitude: float = Field(..., ge=-180.0, le=180.0, description="Kinh độ, giá trị từ -180 đến 180")
 
 class RoutingRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     user_id: str = Field(..., alias="userId", description="ID người dùng")
     conversation_id: str = Field(..., alias="conversationId")
     platform: Literal["telegram", "java_app"] = Field(..., description="Nền tảng gửi yêu cầu")
@@ -14,10 +15,12 @@ class RoutingRequest(BaseModel):
     origin: Location
     destination: Location
     
-    class Config:
-        allow_population_by_field_name = True
 
 class RoutingResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    
+    user_id: str = Field(..., alias="userId", description="ID người dùng")
+    conversation_id: str = Field(..., alias="conversationId")
     status: Literal["success", "error", "pending"]
     message: str
     distance_km: float | None = None   

@@ -4,7 +4,6 @@ import gc
 import pytz
 from loguru import logger
 
-
 class CrawlerScheduler:
     def __init__(self, crawler, traffic_manager, hot_storage, cold_storage):
         self.crawler = crawler
@@ -19,13 +18,18 @@ class CrawlerScheduler:
             speed = item['speed_kmh']
             segment_id = item['segment_id']
             
-            penalty = 1.0
             if speed < 5.0:
-                penalty = 5.0
+                penalty = 4.0
             elif speed < 10.0:
                 penalty = 2.5
             elif speed < 15.0:
                 penalty = 1.5
+            elif speed > 40.0:
+                penalty = 0.7
+            elif speed > 30.0:
+                penalty = 0.85
+            else:
+                penalty = 1.0
                 
             self.traffic_manager.apply_traffic_penalty(segment_id, penalty)
 
@@ -35,10 +39,11 @@ class CrawlerScheduler:
             while True:
                 now_vn = datetime.now(vn_tz)
                 current_hour = now_vn.hour
+                current_minute = now_vn.minute
                 should_crawl = False
 
-                if 22 <= current_hour <= 23 or 0 <= current_hour < 4:
-                    sleep_time = 3600
+                if (current_hour == 21 and current_minute > 30) or (22 <= current_hour <= 23) or (0 <= current_hour < 5) or (current_hour == 5 and current_minute < 30):
+                    sleep_time = 1800
                 elif current_hour in [6, 7, 8, 16, 17, 18]:
                     sleep_time = 120
                     should_crawl = True
@@ -58,7 +63,6 @@ class CrawlerScheduler:
                         gc.collect()
                     except Exception as e:
                         logger.exception(f"Lỗi lần cào dữ liệu này: {e}.")
-
                 await asyncio.sleep(sleep_time)
         except asyncio.CancelledError:
             logger.info("Ngừng crawler background task...")

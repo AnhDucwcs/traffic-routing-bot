@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 def bake_graph_brain():
     src_dir = pathlib.Path(__file__).parent.parent
-    graph_file = src_dir / "data" / "hcmc_routing_brain.pkl"
+    graph_file = src_dir / "data" / "hcmc_routing_brain_v1.pkl"
     segments_file = src_dir / "data" / "segment_lengths_v2.json"
     output_file = src_dir / "data" / "hcmc_routing_brain_v2.pkl"
     
@@ -22,17 +22,25 @@ def bake_graph_brain():
         if isinstance(hw, list): 
             hw = hw[0]
 
-        # Phân loại vận tốc (km/h)
-        if hw in ['trunk', 'trunk_link', 'primary', 'primary_link']:
-            speed_kmh = 45.0
-        elif hw in ['secondary', 'secondary_link']:
-            speed_kmh = 40.0
-        elif hw in ['tertiary', 'tertiary_link']:
-            speed_kmh = 35.0
-        elif hw in ['residential', 'living_street']:
-            speed_kmh = 25.0
-        else:
-            speed_kmh = 20.0
+        maxspeed = data.get('maxspeed', None)
+        if isinstance(maxspeed, list):
+            maxspeed = maxspeed[0]
+            
+        try:
+            # Ép kiểu an toàn (OSM đôi khi lưu chuỗi như '50', '60')
+            speed_kmh = float(maxspeed)
+        except (TypeError, ValueError):
+            # 2. Fallback: Nếu không có maxspeed, tự nội suy từ loại đường
+            if hw in ['trunk', 'trunk_link', 'primary', 'primary_link']:
+                speed_kmh = 45.0
+            elif hw in ['secondary', 'secondary_link']:
+                speed_kmh = 40.0
+            elif hw in ['tertiary', 'tertiary_link']:
+                speed_kmh = 35.0
+            elif hw in ['residential', 'living_street']:
+                speed_kmh = 30.0
+            else:
+                speed_kmh = 20.0
 
         # Lấy chiều dài (mét)
         length = data.get('length', 0.0)
@@ -70,12 +78,19 @@ def bake_graph_brain():
             u = nodes[i]
             v = nodes[i + 1]
 
-            # Kiểm tra xem cạnh này có tồn tại trong đồ thị không
+            # Kiểm tra xem cạnh này có tồn tại xuôi chiều không
+            # Giả sử con đường đó là 2 chiều, có thể dữ liệu OSM chỉ lưu 1 chiều
+            # Tôi sẽ coi như cả 2 chiều đều là đường xe buýt nếu một trong hai chiều có tồn tại trong đồ thị
             if G.has_edge(u, v):
-                # MultiDiGraph có thể có nhiều nhánh song song giữa u và v (key=0, key=1...)
                 for k in G[u][v]:
-                    if not G[u][v][k]['is_bus_route']:
+                    if not G[u][v][k].get('is_bus_route', False):
                         G[u][v][k]['is_bus_route'] = True
+                        bus_edges_count += 1
+            # FALLBACK: Nếu không có xuôi chiều, kiểm tra ngược chiều
+            elif G.has_edge(v, u):
+                for k in G[v][u]:
+                    if not G[v][u][k].get('is_bus_route', False):
+                        G[v][u][k]['is_bus_route'] = True
                         bus_edges_count += 1
 
     print(f"Đã đánh dấu {bus_edges_count} đoạn đường thuộc mạng lưới xe buýt.")

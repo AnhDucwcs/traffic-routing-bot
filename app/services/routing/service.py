@@ -3,19 +3,19 @@ from app.services.routing import pathfinder
 
 class RoutingService:
     # Dịch vụ này sẽ cung cấp các phương thức để tìm đường, chuyển đổi định dạng, v.v.
-    async def find_path(self, graph, start_lat: float, start_lng: float, end_lat: float, end_lng: float):
-        return await pathfinder.find_shortest_path(graph, start_lat, start_lng, end_lat, end_lng)
+    async def find_path(self, traffic_manager, start_lat: float, start_lng: float, end_lat: float, end_lng: float):
+        return await pathfinder.find_shortest_path(traffic_manager, start_lat, start_lng, end_lat, end_lng)
 
-    def generate_google_maps_url(self, graph, path):
-        return pathfinder.generate_google_maps_url(graph, path)
+    def generate_google_maps_url(self, traffic_manager, path):
+        return pathfinder.generate_google_maps_url(traffic_manager, path)
 
-    def to_geojson(self, graph, path):
+    def to_geojson(self, traffic_manager, path):
         if not path:
             return None
-        transformer_back = pathfinder.Transformer.from_crs(graph.graph['crs'], "EPSG:4326", always_xy=True)
+        transformer_back = pathfinder.Transformer.from_crs(traffic_manager.G.graph['crs'], "EPSG:4326", always_xy=True)
         coordinates = []
         for node in path:
-            x, y = graph.nodes[node]['x'], graph.nodes[node]['y']
+            x, y = traffic_manager.G.nodes[node]['x'], traffic_manager.G.nodes[node]['y']
             lng, lat = transformer_back.transform(x, y)
             coordinates.append((lng, lat))
         return {
