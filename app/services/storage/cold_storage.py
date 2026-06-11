@@ -24,6 +24,7 @@ class ColdStorageManager:
         self.current_month = datetime.datetime.now().strftime("%Y-%m")
         self.local_jsonl = self.dataset_dir / f"buffer_{self.current_month}.jsonl"
         
+        self.sync_interval = sync_interval_minutes * 60
         asyncio.create_task(self._auto_sync_loop())
         logger.info(f"[Cold DB] Hệ thống Stateless kích hoạt. Chu kỳ đồng bộ: {sync_interval_minutes} phút.")
 
@@ -49,8 +50,12 @@ class ColdStorageManager:
             await asyncio.sleep(self.sync_interval)
             try:
                 await self.sync_and_convert_parquet()
+            except asyncio.CancelledError:
+                logger.info("[Cold DB] Tiến trình ngầm nhận lệnh dừng hệ thống.")
+                break
             except Exception as e:
                 logger.error(f"[Cold DB] Lỗi đóng gói Parquet: {e}")
+                await asyncio.sleep(60)
 
     async def sync_and_convert_parquet(self):
         """Quy trình cốt lõi: Tải về -> Trộn dữ liệu -> Đẩy lên -> Xóa sạch local"""
