@@ -96,13 +96,35 @@ def bake_graph_brain():
 
 def calc_turn_penalty(graph, prev_node, current_node, next_node):
     if prev_node is None or next_node is None:
-        return 0
+        return 0.0
+        
+    # 1. BỘ LỌC NGÃ TƯ: Bỏ qua các "khúc cua" (Shape Nodes)
+    # out_degree <= 1 nghĩa là đến node này chỉ có 1 đường duy nhất để đi tiếp -> Không phải ngã rẽ
+    if graph.out_degree(current_node) <= 1:
+        return 0.0 
+
+    # 2. XÁC ĐỊNH ĐỊA HÌNH: Đang ở hẻm hay đại lộ?
+    try: 
+        # Lấy loại đường của mép rẽ tiếp theo
+        edge_data = graph[current_node][next_node]
+        first_key = list(edge_data.keys())[0]
+        hw = edge_data[first_key].get('highway', 'unclassified')
+        if isinstance(hw, list): 
+            hw = hw[0]
+    except Exception:
+        hw = 'unclassified'
+
+    # Nhận diện hẻm
+    # Tôi tính trọng số phạt cho hẻm nhẹ hơn để khuyến khích A* chọn đường hẻm nếu có thể
+    is_alley = hw in ['residential', 'living_street', 'service', 'tertiary', 'tertiary_link']
+
+    # 3. TÍNH TOÁN LƯỢNG GIÁC
     try: 
         u_x, u_y = graph.nodes[prev_node]['x'], graph.nodes[prev_node]['y']
         v_x, v_y = graph.nodes[current_node]['x'], graph.nodes[current_node]['y']
         w_x, w_y = graph.nodes[next_node]['x'], graph.nodes[next_node]['y']
     except KeyError:
-        return 0
+        return 0.0
     
     v1_x, v1_y = v_x - u_x, v_y - u_y
     v2_x, v2_y = w_x - v_x, w_y - v_y
@@ -113,13 +135,15 @@ def calc_turn_penalty(graph, prev_node, current_node, next_node):
     angle_rad = math.atan2(cross_prod, dot_prod)
     angle_deg = math.degrees(angle_rad)
 
-    # MA TRẬN PHẠT CHO XE MÁY
     if abs(angle_deg) > 150:
-        return 45.0  # U-turn (Quay đầu)
+        return 15.0 if is_alley else 45.0  
+        
     elif 20 < angle_deg <= 150:
-        return 25.0  # Rẽ trái
+        return 5.0 if is_alley else 25.0  
+        
     elif -150 <= angle_deg < -20:
-        return 5.0   # Rẽ phải
+        return 0.0 if is_alley else 5.0   
+        
     else:
         return 0.0   # Đi thẳng
     
@@ -148,5 +172,5 @@ def bake_turn_penalties():
     print(f"Đã cooked {len(turn_penalties)} góc rẽ phạt!")
 
 if __name__ == "__main__":
-    bake_graph_brain()
+    # bake_graph_brain()
     bake_turn_penalties()  # hoặc cho bake_graph_brain() trả về G rồi sau đó truyền G vào bake_turn_penalties(G) để tránh phải load lại đồ thị một lần nữa.
