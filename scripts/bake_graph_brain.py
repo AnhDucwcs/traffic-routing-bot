@@ -19,18 +19,9 @@ def bake_graph_brain():
         data['is_bus_route'] = False
 
         hw = data.get('highway', 'unclassified')
+        speed_kmh = 15.0
         if isinstance(hw, list): 
             hw = hw[0]
-
-        maxspeed = data.get('maxspeed', None)
-        if isinstance(maxspeed, list):
-            maxspeed = maxspeed[0]
-            
-        try:
-            # Ép kiểu an toàn (OSM đôi khi lưu chuỗi như '50', '60')
-            speed_kmh = float(maxspeed)
-        except (TypeError, ValueError):
-            # 2. Fallback: Nếu không có maxspeed, tự nội suy từ loại đường
             if hw in ['trunk', 'trunk_link', 'primary', 'primary_link']:
                 speed_kmh = 45.0
             elif hw in ['secondary', 'secondary_link']:
