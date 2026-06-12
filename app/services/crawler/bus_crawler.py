@@ -233,12 +233,14 @@ class BusCrawler:
         hot_results = []
         
         for seg_id, records in hot_results_dict.items():
-            worst_traffic = min(records, key=lambda x: x["instant_speed_kmh"])
-            
+            average_speed = sum(r["instant_speed_kmh"] for r in records) / len(records)
+            if average_speed < 5.0:
+                average_speed = 5.0
+            latest_timestamp = max(x["crawled_time"] for x in records)
             hot_results.append({
                 "segment_id": seg_id,
-                "speed_kmh": round(worst_traffic["instant_speed_kmh"], 2),
-                "timestamp": worst_traffic["crawled_time"]
+                "speed_kmh": round(average_speed, 2),
+                "timestamp": latest_timestamp,
             })
             
         if hot_results or cold_results:
