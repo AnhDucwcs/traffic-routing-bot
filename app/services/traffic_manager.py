@@ -43,7 +43,7 @@ class TrafficManager:
                 
         logger.info(f"Traffic Index được xây dựng với {len(self.segment_index)} bus segments.")
 
-    def apply_traffic_penalty(self, segment_id: str, penalty_factor: float, spillover_alpha: float = 0.15):
+    def apply_traffic_penalty(self, segment_id: str, crawler_speed_kmh: float, spillover_alpha: float = 0.15):
         """
         Crawler gọi hàm này để cập nhật trọng số kẹt xe.
         """
@@ -55,8 +55,15 @@ class TrafficManager:
         # Bật khóa chặn: Đợi update xong thì A* mới được đọc
         with self.write_lock:
             for u, v, k in target_edges:
-                base_time = self.G[u][v][k].get('base_time', 10.0)
-                self.G[u][v][k]['current_weight'] = base_time * penalty_factor
+                edge_data = self.G[u][v][k]
+                base_time = edge_data.get('base_time', 10.0)
+                base_speed_kmh = edge_data.get('speed_kmh', 25.0)
+                if crawler_speed_kmh <= base_speed_kmh:
+                    penalty_factor = base_speed_kmh / crawler_speed_kmh
+                else:
+                    penalty_factor = 1.0
+                penalty_factor = min(penalty_factor, 10.0)
+                edge_data['current_weight'] = base_time * penalty_factor
 
                 # Hiệu ứng tràn (Spillover) vào hẻm
                 if penalty_factor > 1.0:
@@ -70,15 +77,15 @@ class TrafficManager:
                             continue
                             
                         for neighbor_k in self.G[node][neighbor]:
-                            edge_data = self.G[node][neighbor][neighbor_k]
+                            neighbor_edge = self.G[node][neighbor][neighbor_k]
                             
-                            if not edge_data.get('is_bus_route', False):
-                                neighbor_base = edge_data.get('base_time', 10.0)
+                            if not neighbor_edge.get('is_bus_route', False):
+                                neighbor_base = neighbor_edge.get('base_time', 10.0)
                                 new_weight = neighbor_base * spillover_penalty
                                 
                                 # Chỉ cập nhật nếu trọng số tràn lớn hơn trọng số hiện tại của hẻm đó
-                                if edge_data.get('current_weight', neighbor_base) < new_weight:
-                                    edge_data['current_weight'] = new_weight
+                                if neighbor_edge.get('current_weight', neighbor_base) < new_weight:
+                                    neighbor_edge['current_weight'] = new_weight
 
     def reset_traffic(self):
         """Reset toàn bộ về base_time"""

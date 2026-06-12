@@ -76,6 +76,7 @@ class BusCrawler:
                                     "variation_id": str(var_id),
                                     "stop_id": str(stop_id),
                                     "segment_id": segment_id,
+                                    "segment_length": segment_length,
                                     "selected_bus": selected_buses,
                                     "crawled_time": crawled_time
                                 })
