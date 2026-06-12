@@ -1,3 +1,5 @@
+import math
+
 import networkx as nx
 import json
 import pathlib
@@ -92,5 +94,59 @@ def bake_graph_brain():
 
     print("Hoàn tất! Đồ thị V2 đã sẵn sàng tích hợp với Crawler.")
 
+def calc_turn_penalty(graph, prev_node, current_node, next_node):
+    if prev_node is None or next_node is None:
+        return 0
+    try: 
+        u_x, u_y = graph.nodes[prev_node]['x'], graph.nodes[prev_node]['y']
+        v_x, v_y = graph.nodes[current_node]['x'], graph.nodes[current_node]['y']
+        w_x, w_y = graph.nodes[next_node]['x'], graph.nodes[next_node]['y']
+    except KeyError:
+        return 0
+    
+    v1_x, v1_y = v_x - u_x, v_y - u_y
+    v2_x, v2_y = w_x - v_x, w_y - v_y
+    
+    cross_prod = v1_x * v2_y - v1_y * v2_x
+    dot_prod = v1_x * v2_x + v1_y * v2_y
+    
+    angle_rad = math.atan2(cross_prod, dot_prod)
+    angle_deg = math.degrees(angle_rad)
+
+    # MA TRẬN PHẠT CHO XE MÁY
+    if abs(angle_deg) > 150:
+        return 45.0  # U-turn (Quay đầu)
+    elif 20 < angle_deg <= 150:
+        return 25.0  # Rẽ trái
+    elif -150 <= angle_deg < -20:
+        return 5.0   # Rẽ phải
+    else:
+        return 0.0   # Đi thẳng
+    
+def bake_turn_penalties():
+    src_dir = pathlib.Path(__file__).parent.parent
+    graph_file = src_dir / "data" / "hcmc_routing_brain_v2.pkl"
+    output_file = src_dir / "data" / "turn_penalties.pkl"
+    turn_penalties = {}
+    
+    print("1. Nạp đồ thị dã được xử lý vào RAM...")
+    with open(graph_file, 'rb') as f:
+        G = pickle.load(f)
+    
+    # Quét toàn bộ node trong đồ thị
+    for u in tqdm(G.nodes, desc="Baking Turn Penalties"):
+        for prev_u in G.predecessors(u):
+            for v in G.successors(u):
+                if prev_u == v: # Bỏ qua trường hợp quay đầu đi ngược lại đúng cạnh cũ
+                    continue
+                penalty = calc_turn_penalty(G, prev_u, u, v)
+                if penalty > 0.0:
+                    turn_penalties[(prev_u, u, v)] = penalty
+                    
+    with open(output_file, 'wb') as f:
+        pickle.dump(turn_penalties, f)
+    print(f"Đã cooked {len(turn_penalties)} góc rẽ phạt!")
+
 if __name__ == "__main__":
     bake_graph_brain()
+    bake_turn_penalties()  # hoặc cho bake_graph_brain() trả về G rồi sau đó truyền G vào bake_turn_penalties(G) để tránh phải load lại đồ thị một lần nữa.
