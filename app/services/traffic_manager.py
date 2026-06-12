@@ -4,8 +4,9 @@ from pathlib import Path
 from app.core.logger import logger
 
 class TrafficManager:
-    def __init__(self, routing_graph):
+    def __init__(self, routing_graph, turn_penalties):
         self.G = routing_graph
+        self.turn_penalties = turn_penalties
         self.segment_index = {}
         # Khóa chặn ghi để chống đụng độ RAM giữa thao tác Read (A*) và Write (Crawler)
         self.write_lock = threading.Lock()
