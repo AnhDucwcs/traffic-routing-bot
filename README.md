@@ -166,8 +166,8 @@ Hoặc chạy trên HuggingFace Spaces:
 
 - Crawling Bus Data:
     1. Đọc danh sách các bến xe trong phạm vi nội thành từ `data/master_stops.json`.
-    2. Sử dụng api_1 `https://apicms.ebms.vn/prediction/predictbystopid/{stop_id}` và `data/segment_lengths_v2.json` để tìm và trích xuất thông tin của xe buýt trong phạm từ trạm trước đó đến trạm hiện tại (chọn 1 xe gần nhất). Các xe có vận tốc bằng 0 sẽ được kiểm tra, nếu xe cách trạm hiện tại dưới 60m thì sẽ bỏ qua vì có thể xe đang dừng đón/trả khách (đảm bảo an toàn nếu đang có nhiều xe buýt hoặc dữ liệu GPS chưa cập nhật kịp thời).
-    3. Sử dụng api_2 `https://apicms.ebms.vn/prediction/{route_id}/{var_id}/{stop_id}/predictnextstops/1` để lấy thông tin dự đoán cho `1` trạm xe tiếp theo tính từ trạm hiện tại. 
+    2. Sử dụng api_1 https://apicms.ebms.vn/prediction/predictbystopid/{stop_id} và `data/segment_lengths_v2.json` để tìm và trích xuất thông tin của xe buýt trong phạm từ trạm trước đó đến trạm hiện tại (chọn 1 xe gần nhất). Các xe có vận tốc bằng 0 sẽ được kiểm tra, nếu xe cách trạm hiện tại dưới 60m thì sẽ bỏ qua vì có thể xe đang dừng đón/trả khách (đảm bảo an toàn nếu đang có nhiều xe buýt hoặc dữ liệu GPS chưa cập nhật kịp thời).
+    3. Sử dụng api_2 https://apicms.ebms.vn/prediction/{route_id}/{var_id}/{stop_id}/predictnextstops/1 để lấy thông tin dự đoán cho `1` trạm xe tiếp theo tính từ trạm hiện tại. 
     4. Khi sử dụng api_2 sẽ kiểm tra đúng biển số xe buýt để đảm bảo tránh lệch thông tin.
     5. Giá trị vận tốc khi đẩy lên `HOT_DB` sẽ được tính bằng cách lấy giá trị trung bình vận tốc của các xe trong segment ({pre_stop_id}_{cur_stop_id}) hiện tại thay vì lựa chọn giá trị nhỏ nhất để có thểm tính chính xác cho dữ liệu.
     5. Kết quả từ api_1 đã đủ để sử dụng, có thể đẩy lên `HOT_DB`. Tuy nhiên để có dữ liệu phục vị cho việc thống kê hay huấn luyện mô hình AI sau này thì cần `COLD_DB` dựa trên kết quả tính toán sau khi có dữ liệu từ api_2.
