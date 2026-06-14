@@ -1,53 +1,74 @@
-## 1.  Hot Storage (MongoDB Atlas)
-Lưu trữ vận tốc tức thời cào từ API xe buýt.
+## 1. Kiến trúc Lưu trữ Kép (Dual-Database Architecture)
 
-**Document Sample:**
-```json
+Dự án áp dụng mô hình kiến trúc lưu trữ tách biệt để giải quyết hai bài toán có tính chất trái ngược nhau:
+
+- **Hot Storage (Kho Nóng):** Cung cấp dữ liệu Tức thời (Real-time) với độ trễ cực thấp cho Thuật toán A* tìm đường.
+- **Cold Storage (Kho Lạnh):** Lưu trữ vĩnh viễn dữ liệu Thô & Lịch sử (Historical Data) phục vụ cho việc huấn luyện mô hình Machine Learning/AI trong tương lai mà không làm tốn chi phí bộ nhớ.
+
+## 2. Kho Nóng (Hot Storage) - MongoDB
+
+- **Mục đích:** Phục vụ trực tiếp cho tính năng tìm đường của Telegram Bot.
+- **Đặc tính:** Siêu gọn nhẹ, I/O cực cao, và tự động dọn rác (Ephemeral).
+- **Database:** `traffic_db`
+- **Collection:** `bus_speeds`
+
+### 2.1. Cấu trúc Document (Schema)
+
+Dữ liệu đã được hệ thống Crawler sàng lọc (Sanitized), loại bỏ hoàn toàn các "Ảo giác GPS" (ví dụ xe chạy > 80km/h) và nhiễu do xe dừng trạm đón khách (<60m), các giá trị vận tốc < 5km/h đều sẽ được đổi lại thành 5km/h để tránh ảnh hưởng đến việc tính trọng số phạt.
+
+JSON
+
+```
 {
-  "timestamp": { "$date": "2026-05-09T06:31:36.429Z" },
-  "from_stop_id": "311",
-  "next_stop_id": "312",
-  "speed_ms": 4.89,
-  "distance_to_next_stop": 150, 
-  "_id": { "$oid": "69fed5d7b9fcfe42573917f9" }
+  "from_stop_id": "417",                                 // ID Trạm bắt đầu của đoạn đường (Node U)
+  "to_stop_id": "418",                                   // ID Trạm kết thúc của đoạn đường (Node V)
+  "instant_speed_kmh": 6.38,                             // Vận tốc lấy từ api
+  "timestamp": {"$date": "2026-06-14T07:45:52.589Z"}     // Thời điểm bản ghi được lưu
 }
-````
+```
 
-- **TTL Index:** 86400 giây (24 giờ). Dữ liệu tự hủy sau 1 ngày.
-- **Reference:** `next_stop_id` dùng để map với tọa độ trong `master_stops.json`.
-- **Reference:** `distance_to_next_stop` để bổ sung thông tin về không gian. Khoảng cách còn lại đến trạm (mét). Dùng để xác định vị trí xe bắt đầu đi chậm trên cạnh (edge) của đồ thị.
+### 2.2. Chiến lược Chỉ mục (Indexing Strategy)
 
-## 2.  Cold Storage (Local Parquet)
+Để đảm bảo MongoDB duy trì dung lượng ở mức siêu thấp (dưới 512MB) và tốc độ đọc/ghi tối đa:
 
-Lưu trữ lịch sử giao thông đã qua xử lý và tổng hợp. Dữ liệu này được nén siêu cấp bằng định dạng Apache Parquet để phục vụ huấn luyện mô hình dự đoán.
+1. **Compound Unique Index:** Đánh chỉ mục trên cặp `[from_stop_id, to_stop_id]`. Crawler sẽ dùng lệnh `UPSERT` dựa trên cặp khóa này để liên tục **ghi đè** vận tốc mới nhất lên đoạn đường, không tạo ra bản ghi thừa.
+2. **TTL Index (Time-To-Live):** Đánh chỉ mục tự hủy trên trường `timestamp` với giới hạn **3600 giây (60 phút)**. Bất kỳ đoạn đường nào không có xe buýt chạy qua cập nhật trong 60 phút sẽ bị xóa, thuật toán A* sẽ tự động Fallback về trọng số thời gian tĩnh mặc định.
 
-**Cấu trúc bảng dữ liệu (Schema Table):**
+## 3. Kho Lạnh (Cold Storage) - Data Lake
 
-|**Tên cột**|**Kiểu dữ liệu**|**Mô tả**|
-|---|---|---|
-|**`stop_id`**|`String`|ID của trạm xe buýt.|
-|**`avg_speed`**|`Float`|Vận tốc trung bình trong khung giờ (m/s).|
-|**`p50_distance`**|`Float`|Khoảng cách trung vị (Median) khi xe báo vận tốc này.|
-|**`hour`**|`Int`|Khung giờ trong ngày (0-23).|
-|**`day_of_week`**|`Int`|Thứ trong tuần (0: Thứ 2 ... 6: Chủ Nhật).|
-|**`date`**|`String`|Ngày ghi nhận (YYYY-MM-DD).|
-|**`congestion_level`**|`Int`|**Nhãn mức độ kẹt xe (0: Thoáng, 1: Chậm, 2: Đông, 3: Kẹt).**|
+- **Nền tảng:** Hugging Face Datasets (hoặc Google Cloud Storage).
+- **Mục đích:** Hồ dữ liệu (Data Lake) lưu trữ ngữ cảnh thô (Contextual Raw Data) phục vụ cho Phân tích Dữ liệu (EDA) và Huấn luyện AI dự đoán kẹt xe (Predictive Routing) trong tương lai.
+- **Đặc tính:** Lưu mọi thứ (kể cả dữ liệu lỗi, nhiễu), vĩnh viễn không bao giờ xóa (Zero-deletion policy).
+- **Định dạng:** Lưu dạng cột (Columnar format) bằng file `.parquet` giúp nén dung lượng siêu nhỏ và tối ưu tốc độ đọc trực tiếp vào RAM cho thư viện Pandas/Polars.
 
----
+### 3.1. Cấu trúc Dữ liệu (Schema)
 
-## Cơ chế gán nhãn tự động (Auto-Labeling Logic)
+Lưu trữ toàn cảnh trạng thái vật lý của chiếc xe buýt tại một thời điểm cắt ngang (Snapshot), không vứt bỏ các dữ liệu ngoại lệ (Outliers) để AI tự học cách phân biệt.
 
-Trường `congestion_level` trong Cold Storage sẽ được hệ thống "Janitor" tự động tính toán vào cuối ngày dựa trên quy tắc sau:
+JSON
 
-1. **Lấy mốc chuẩn**: Tìm vận tốc cao nhất ($V_{max}$) của trạm đó vào khung giờ vắng vẻ (2h - 4h sáng).
-2. **So sánh tỷ lệ ($R = V_{curr} / V_{max}$)**:
-    - **Level 0 ($R > 0.8$)**: Thông thoáng (Xanh).
-    - **Level 1 ($0.5 < R \le 0.8$)**: Di chuyển chậm (Vàng).
-    - **Level 2 ($0.2 < R \le 0.5$)**: Ùn ứ cục bộ (Cam).
-    - **Level 3 ($R \le 0.2$)**: Kẹt cứng (Đỏ).
+```
+{
+  "timestamp": "2026-05-29T14:30:00Z",                                 // Thời gian hệ thống cào dữ liệu (Mốc tuyệt đối)
+  "route_id": "55",                                                    // Mã tuyến xe buýt
+  "var_id": str(var_id),                                               // Mã chiều hiện tại của tuyến
+  "vehicle_id": "50E22080",                                            // Biển số định danh xe
+  "to_current_stop_id": "417",                                         // ID Trạm hiện tại
+  "to_next_stop_id": "418",                                            // ID Trạm tiếp theo
+  "distance_to_current_stop": round(distance_to_current_stop, 2),      // Khoảng cách còn lại tới trạm hiện tại (mét)
+  "time_to_current_stop": round(time_to_current_stop, 2),              // Thời gian dự kiến tới trạm hiện tại (giây)
+  "distance_to_next_stop": 4765.84,                                    // Khoảng cách còn lại tới trạm tiếp theo (mét)
+  "time_to_next_stop": round(time_to_next_stop, 2),                    // Thời gian dự kiến tới trạm tiếp theo (giây)
+  "instant_speed_kmh": 23.0,                                           // Vận tốc tức thời từ GPS (Sẽ là 0.0 khi xe dừng trạm/đèn đỏ)
+}
+```
 
-> **Lưu ý đặc biệt**: Nếu `dist_to_stop` < 10m và vận tốc thấp, hệ thống sẽ tự động hạ mức kẹt xe về 0 để tránh nhầm lẫn với việc xe đang dừng trả khách.
+### 3.2. Chiến lược Lưu trữ & Phân mảnh (Partitioning Strategy)
 
-**Lợi ích cho AI:**
+Áp dụng chiến trúc gom lô (Micro-batching) thay vì ghi lắt nhắt từng dòng để tránh quá tải API của Cloud Storage và bảo toàn dữ liệu khi server restart:
 
-Cung cấp tập dữ liệu sạch để huấn luyện mô hình dự đoán vận tốc theo thời gian (Time-series Forecasting). Giúp thuật toán A* không chỉ né kẹt xe hiện tại mà còn né được kẹt xe sắp xảy ra.
+1. **Buffer (Ghi tạm):** Trong quá trình Crawler chạy, dữ liệu thô liên tục được `append` (ghi nối tiếp) vào một file tạm ở ổ cứng của server (VD: `/tmp/raw_data.jsonl`).
+2. **Batching (Đóng gói):** Cứ định kỳ **1 giờ/lần**, một luồng Background Task sẽ đọc file tạm này, chuyển đổi (cast) sang định dạng PyArrow và nén thành một file `.parquet` duy nhất.
+3. **Partitioning (Phân mảnh theo Hive-style):** File Parquet được bắn lên Hugging Face Datasets và tổ chức theo cấu trúc cây thư mục thời gian chuẩn MLOps để AI dễ dàng trích xuất sau này:
+    `/data/traffic_{year=2026}-{month=06}.parquet`
+4. **Cleanup (Dọn dẹp):** Chỉ khi nhận được HTTP Status 200 (Upload thành công) từ Cloud, hệ thống mới tự động xóa file tạm `/tmp/raw_data.jsonl` để bắt đầu chu kỳ 1 giờ tiếp theo.
