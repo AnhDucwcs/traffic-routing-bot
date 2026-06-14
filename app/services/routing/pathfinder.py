@@ -2,6 +2,8 @@ import networkx as nx
 import osmnx as ox
 import asyncio
 import math
+import heapq
+import itertools
 import urllib.parse
 from pyproj import Transformer
 from app.core.logger import logger
@@ -23,6 +25,46 @@ def calc_time_from_euclidean(u, v, graph):
     h = math.hypot(x2 - x1, y2 - y1)
     t = h / 22.2  # Tốc độ là 80km/h
     return t
+
+def custom_astar_path(traffic_manager, source, target, heuristic_func):
+    """Thuật toán A* tùy chỉnh, hỗ trợ phạt góc rẽ và dùng Min-Heap (O(log N))"""
+    c = itertools.count()
+    open_set = []
+    heapq.heappush(open_set, (0, next(c), source, [source], 0))
+    g_score = {(source, None): 0}
+    
+    while open_set:
+        f, _, current, path, current_g = heapq.heappop(open_set)
+        
+        if current == target:
+            return path
+            
+        prev_node = path[-2] if len(path) > 1 else None
+        
+        # Nếu nhánh hiện tại có chi phí đắt hơn nhánh đã khám phá, bỏ qua
+        if current_g > g_score.get((current, prev_node), float('inf')):
+            continue
+            
+        for neighbor in traffic_manager.G.successors(current):
+            # Lấy trọng số thực tế (xử lý MultiDiGraph)
+            edges = traffic_manager.G[current][neighbor]
+            edge_data = min(edges.values(), key=lambda x: x.get('current_weight', float('inf')))
+            travel_time = edge_data.get('current_weight', 10.0)
+            
+            # GỌI HÀM PHẠT GÓC RẼ
+            turn_penalty = traffic_manager.turn_penalties.get((prev_node, current, neighbor), 0.0)
+            
+            # Ép xung A* với Bounded Suboptimal (Epsilon = 1.15)
+            h_val = heuristic_func(neighbor, target) * 1.15
+            
+            tentative_g = current_g + travel_time + turn_penalty
+            
+            if tentative_g < g_score.get((neighbor, current), float('inf')):
+                g_score[(neighbor, current)] = tentative_g
+                f_score = tentative_g + h_val
+                heapq.heappush(open_set, (f_score, next(c), neighbor, path + [neighbor], tentative_g))
+                
+    raise nx.NetworkXNoPath(f"Không tìm thấy đường từ {source} đến {target}")
 
 async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float, end_lat: float, end_lng: float):
     to_graph, _ = _get_transformers(traffic_manager.G)
@@ -50,12 +92,11 @@ async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float
     # Run A* in a separate thread to avoid blocking the event loop, since it's CPU-bound
     try:
         path = await asyncio.to_thread(
-            nx.astar_path, 
-            traffic_manager.G, 
-            start_node, 
-            end_node, 
-            heuristic=heuristic_func, 
-            weight="current_weight"
+            custom_astar_path,
+            traffic_manager,
+            start_node,
+            end_node,
+            heuristic_func
         )
         
         total_distance_m = 0

@@ -48,3 +48,16 @@ def load_route_stop_sequence():
     
     logger.info(f"Route stop sequence loaded.")
     return route_stop_sequence
+
+def load_turn_penalties():
+    logger.info("Loading turn penalties from disk...")
+    
+    curent_dir = Path(__file__).resolve().parent
+    src_dir = curent_dir.parent.parent.parent
+    penalties_path = src_dir / "data" / "turn_penalties.pkl"
+    
+    with open(penalties_path, 'rb') as f:
+            turn_penalties = pickle.load(f)
+    
+    logger.info(f"Turn penalties loaded.")
+    return turn_penalties

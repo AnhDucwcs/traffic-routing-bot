@@ -15,23 +15,10 @@ class CrawlerScheduler:
         
     def _update_hot_db(self, traffic_data):
         for item in traffic_data:
-            speed = item['speed_kmh']
+            speed_kmh = item['speed_kmh'] 
             segment_id = item['segment_id']
-            
-            if speed < 5.0:
-                penalty = 4.0
-            elif speed < 10.0:
-                penalty = 2.5
-            elif speed < 15.0:
-                penalty = 1.5
-            elif speed > 40.0:
-                penalty = 0.7
-            elif speed > 30.0:
-                penalty = 0.85
-            else:
-                penalty = 1.0
                 
-            self.traffic_manager.apply_traffic_penalty(segment_id, penalty)
+            self.traffic_manager.apply_traffic_penalty(segment_id, speed_kmh)
 
     async def _background_loop(self):
         vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')

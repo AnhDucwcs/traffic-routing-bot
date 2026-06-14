@@ -8,7 +8,8 @@ from loguru import logger
 from app.api.routes import router
 from app.core.config import settings
 from app.core.logger import setup_logging
-from app.services.routing.map_builder import load_routing_graph, load_segment_lengths, load_route_stop_sequence
+from app.services.routing.map_builder import load_routing_graph, load_segment_lengths
+from app.services.routing.map_builder import load_route_stop_sequence, load_turn_penalties
 from app.services.crawler.bus_crawler import BusCrawler
 from app.services.crawler.scheduler import CrawlerScheduler
 from app.services.routing.service import routing_service
@@ -28,7 +29,8 @@ async def lifespan(app: fastapi.FastAPI):
     ram_before = get_current_ram_mb()  # Gọi một lần để log RAM trước khi nạp graph
     
     app.state.graph = load_routing_graph()
-    app.state.traffic_manager = TrafficManager(app.state.graph)
+    turn_penalties = load_turn_penalties()
+    app.state.traffic_manager = TrafficManager(app.state.graph, turn_penalties)
     app.state.route_results = TTLCache(maxsize=1000, ttl=300)  
     app.state.hot_storage = HotStorageManager()
     app.state.cold_storage = ColdStorageManager(sync_interval_minutes=60)
