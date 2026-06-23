@@ -28,3 +28,4 @@ certifi==2026.4.22
 cachetools==7.1.1
 h2==4.3.0
 pyarrow==24.0.0
+scipy==1.17.1
