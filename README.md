@@ -14,7 +14,7 @@ Mô tả ngắn gọn:
 - Có thể sử dụng trực tiếp với Telegram: tìm @TrafficRouting_bot và nhập `/start` để bắt đầu, `/route` và chọn chia sẻ vị trí để tiến hành tìm đường.
 
 ## Yêu cầu trước khi cài đặt
-- Python 3.11.x (tránh lỗi cài đặt thư viện)
+- Python 3.12.x (Hiện đang sử dụng)
 - `osmium-tool` để trích/lọc file .osm.pbf
 - Cài đặt các thư viện trong `requirements.txt`
 
@@ -23,7 +23,7 @@ Mô tả ngắn gọn:
 ### 1. Cài đặt python và thư viện
 - Khuyến khích tạo và sử dụng .venv nội bộ trước khi cài đặt
 ```bash
-python3.11 -m venv .venv
+python -m venv .venv
 ```
 - Active .venv
 - Cài đặt thư viện

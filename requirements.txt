@@ -26,4 +26,4 @@ pytz==2026.2
 PyYAML==6.0.3
 certifi==2026.4.22
 cachetools==7.1.1
-
+h2==4.3.0

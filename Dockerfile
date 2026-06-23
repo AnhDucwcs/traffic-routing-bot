@@ -1,5 +1,5 @@
 # 1. Chọn Base Image
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # 2. Thiết lập biến môi trường
 ENV PYTHONDONTWRITEBYTECODE=1 \
