@@ -6,8 +6,6 @@ class RoutingService:
     async def find_path(self, traffic_manager, start_lat: float, start_lng: float, end_lat: float, end_lng: float):
         return await pathfinder.find_shortest_path(traffic_manager, start_lat, start_lng, end_lat, end_lng)
 
-    def generate_google_maps_url(self, traffic_manager, path):
-        return pathfinder.generate_google_maps_url(traffic_manager, path)
 
     def to_geojson(self, traffic_manager, path):
         if not path:

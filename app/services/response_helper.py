@@ -1,6 +1,6 @@
 from app.models.schemas import RoutingResponse
 
-def create_success_response(user_id, conversation_id, geojson, url, route_id, distance, time, metadata=None):
+def create_success_response(user_id, conversation_id, geojson, route_id, distance, time, metadata=None):
     return RoutingResponse(
         user_id=user_id,
         conversation_id=conversation_id,
@@ -9,7 +9,6 @@ def create_success_response(user_id, conversation_id, geojson, url, route_id, di
         distance_km=distance,
         estimated_time_min=time,
         geojson=geojson,
-        navigation_url=url,
         route_id=route_id,
         metadata=metadata or {}
     )

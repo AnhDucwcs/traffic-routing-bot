@@ -26,6 +26,5 @@ class RoutingResponse(BaseModel):
     distance_km: float | None = None   
     estimated_time_min: float | None = None
     geojson: dict | None = Field(None, description="Dữ liệu GeoJSON của lộ trình")
-    navigation_url: str | None = Field(None, description="URL Google Maps")
     route_id: str | None = None
     metadata: dict | None = Field(default_factory=dict, description="Thông tin bổ sung về lộ trình")

@@ -53,13 +53,12 @@ async def process_routing_background(payload: RoutingRequest, app_state):
     if path is None:
         data = create_error_response(user_id, conversation_id, "Không tìm thấy lộ trình phù hợp.")
     else:
-        url = app_state.routing_service.generate_google_maps_url(traffic_manager, path)
         geojson = app_state.routing_service.to_geojson(traffic_manager, path)
         route_id = str(uuid.uuid4())
         app_state.route_results[route_id] = {
             "geojson": geojson,
         }
-        data = create_success_response(user_id, conversation_id, geojson, url, route_id, distance_km, estimated_time_min)
+        data = create_success_response(user_id, conversation_id, geojson, route_id, distance_km, estimated_time_min)
 
     response_payload = data.model_dump()
  

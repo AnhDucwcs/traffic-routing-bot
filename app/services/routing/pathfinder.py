@@ -4,7 +4,6 @@ import asyncio
 import math
 import heapq
 import itertools
-import urllib.parse
 from pyproj import Transformer
 from app.core.logger import logger
 
@@ -122,79 +121,3 @@ async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float
         logger.exception(f"Lỗi: {e}")
         return None, None, None
     
-def calculate_angle(p1, p2, p3):
-    x1, y1 = p1
-    x2, y2 = p2
-    x3, y3 = p3
-    
-    angle1 = math.atan2(y2 - y1, x2 - x1)
-    angle2 = math.atan2(y3 - y2, x3 - x2)
-    
-    degree = math.degrees(angle2 - angle1)
-    degree = abs(degree) % 360
-    if degree > 180:
-        degree = 360 - degree
-    
-    return abs(degree)    
-
-def optimize_waypoints_for_google_maps(path_coords, max_waypoints=8):
-    if len(path_coords) <= max_waypoints + 2:
-        return []
-
-    turn_points = []
-    for i in range(1, len(path_coords) - 1):
-        angle = calculate_angle(path_coords[i - 1], path_coords[i], path_coords[i + 1])
-        if angle > WAYPOINT_ANGLE_THRESHOLD:  # Threshold for a "turn"
-            turn_points.append((i, path_coords[i - 1]))
-    
-    filtered_points = []
-    last_added_idx = -99
-    
-    for node_idx, coord in turn_points:
-        if node_idx - last_added_idx > 2:
-            filtered_points.append(coord)
-            last_added_idx = node_idx
-    
-    if len(filtered_points) > max_waypoints:
-        step = len(filtered_points) / float(max_waypoints)
-        final_waypoints = [filtered_points[int(math.floor(i * step))] for i in range(max_waypoints)]
-    else:
-        final_waypoints = filtered_points
-
-    return final_waypoints[:8]
-    
-    
-def generate_google_maps_url(traffic_manager, path):
-    if not path:
-        return None
-    
-    _, to_wgs84 = _get_transformers(traffic_manager.G)
-    path_coords = []
-    for node in path:
-        x = traffic_manager.G.nodes[node]['x']
-        y = traffic_manager.G.nodes[node]['y']
-        if to_wgs84:
-            lng, lat = to_wgs84.transform(x, y)
-        else:
-            lng, lat = x, y
-        path_coords.append((lat, lng)) # Google Maps dùng định dạng Lat, Lng
-    
-    start_lat, start_lng = path_coords[0]
-    end_lat, end_lng = path_coords[-1]
-    
-    # Choosing up to 8 waypoints from the internal nodes of the path
-    optimized_waypoints = optimize_waypoints_for_google_maps(path_coords, max_waypoints=8)
-    waypoints_coords = []
-    for lat, lng in optimized_waypoints:
-        if (lat, lng) != (start_lat, start_lng) and (lat, lng) != (end_lat, end_lng):
-            waypoints_coords.append(f"{lat},{lng}")
-    
-    waypoints_str = "|".join(waypoints_coords)
-    logger.info(f"Generated Google Maps URL with start: ({start_lat}, {start_lng}), end: ({end_lat}, {end_lng})")
-    
-    url = f"https://www.google.com/maps/dir/?api=1&origin={start_lat},{start_lng}&destination={end_lat},{end_lng}"
-    if waypoints_str:
-        url += f"&waypoints={urllib.parse.quote(waypoints_str)}"
-    url += "&travelmode=two-wheeler"
-    
-    return url
