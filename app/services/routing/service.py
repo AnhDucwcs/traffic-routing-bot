@@ -7,7 +7,7 @@ class RoutingService:
         return await pathfinder.find_shortest_path(traffic_manager, start_lat, start_lng, end_lat, end_lng)
 
 
-    def to_geojson(self, traffic_manager, path):
+    def to_geojson(self, traffic_manager, path, edge_times=None):
         if not path:
             return None
         transformer_back = pathfinder.Transformer.from_crs(traffic_manager.G.graph['crs'], "EPSG:4326", always_xy=True)
@@ -19,7 +19,7 @@ class RoutingService:
         return {
             "type": "Feature",
             "geometry": {"type": "LineString", "coordinates": coordinates},
-            "properties": {},
+            "properties": {"edge_times": edge_times or []},
         }
 
 

@@ -100,6 +100,7 @@ async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float
         
         total_distance_m = 0
         total_time_s = 0
+        edge_times = []
         
         for i in range(len(path) - 1):
             u, v = path[i], path[i + 1]
@@ -107,17 +108,19 @@ async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float
             
             best_edge = min(edges.values(), key=lambda x: x.get('current_weight', float('inf')))
             
+            edge_time_s = best_edge.get('current_weight', 0)
             total_distance_m += best_edge.get('length', 0)
-            total_time_s += best_edge.get('current_weight', 0)
+            total_time_s += edge_time_s
+            edge_times.append(round(edge_time_s / 60, 4)) # Store time in minutes per edge
         
         distance_km = round(total_distance_m / 1000, 2)
         estimated_time_min = round(total_time_s / 60, 2)
         logger.info(f"Found path with distance: {distance_km} km, estimated time: {estimated_time_min} minutes")
-        return path, distance_km, estimated_time_min
+        return path, distance_km, estimated_time_min, edge_times
     except nx.NetworkXNoPath:
         logger.info("No path found between the specified nodes.")
-        return None, None, None
+        return None, None, None, None
     except Exception as e:
         logger.exception(f"Lỗi: {e}")
-        return None, None, None
+        return None, None, None, None
     
