@@ -44,7 +44,7 @@ async def process_routing_background(payload: RoutingRequest, app_state):
     end_lng = payload.destination.longitude
     logger.info(f"Yêu cầu lộ trình từ ({start_lat}, {start_lng}) đến ({end_lat}, {end_lng})")
     traffic_manager = app_state.traffic_manager
-    path, distance_km, estimated_time_min = await app_state.routing_service.find_path(traffic_manager, start_lat, start_lng, end_lat, end_lng)
+    path, distance_km, estimated_time_min, edge_times = await app_state.routing_service.find_path(traffic_manager, start_lat, start_lng, end_lat, end_lng)
 
     # Đo thời gian
     execution_time = time.perf_counter() - start_time
@@ -53,13 +53,12 @@ async def process_routing_background(payload: RoutingRequest, app_state):
     if path is None:
         data = create_error_response(user_id, conversation_id, "Không tìm thấy lộ trình phù hợp.")
     else:
-        url = app_state.routing_service.generate_google_maps_url(traffic_manager, path)
-        geojson = app_state.routing_service.to_geojson(traffic_manager, path)
+        geojson = app_state.routing_service.to_geojson(traffic_manager, path, edge_times)
         route_id = str(uuid.uuid4())
         app_state.route_results[route_id] = {
             "geojson": geojson,
         }
-        data = create_success_response(user_id, conversation_id, geojson, url, route_id, distance_km, estimated_time_min)
+        data = create_success_response(user_id, conversation_id, geojson, route_id, distance_km, estimated_time_min)
 
     response_payload = data.model_dump()
  

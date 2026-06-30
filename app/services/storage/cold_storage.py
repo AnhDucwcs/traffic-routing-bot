@@ -2,14 +2,11 @@ from app.core.logger import logger
 from app.core.config import settings
 import asyncio
 import json
-import logging
 import datetime
 from pathlib import Path
 import pandas as pd
 from huggingface_hub import HfApi, hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError
-
-logger = logging.getLogger(__name__)
 
 class ColdStorageManager:
     def __init__(self, sync_interval_minutes: int = 60):
