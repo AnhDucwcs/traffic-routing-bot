@@ -13,25 +13,49 @@ OUTPUT_BRAIN = "./data/hcmc_routing_brain_v1.pkl"
 OUTPUT_GEOMETRY = "./data/hcmc_geometry_store.feather"
 
 
-def _is_driving_highway(highway):
-    allowed = {
-        "motorway",
-        "trunk",
-        "primary",
-        "secondary",
-        "tertiary",
-        "unclassified",
-        "residential",
-        "service",
-        "living_street",
-        "motorway_link",
-        "trunk_link",
-        "primary_link",
-        "secondary_link",
-        "tertiary_link",
+def is_valid_motorcycle_edge(tags):
+    highway = tags.get("highway")
+    
+    # 1. Whitelist Cấp 1: Bắt buộc phải là loại đường cho phép xe chạy
+    allowed_highways = {
+        "trunk", "primary", "secondary", "tertiary", 
+        "unclassified", "residential", "service", "living_street",
+        "trunk_link", "primary_link", "secondary_link", "tertiary_link"
     }
-    return highway in allowed
+    if highway not in allowed_highways:
+        return False
+        
+    # 2. Blacklist Cấp 2: Nếu có thẻ cấm (do mapper cố tình gắn), lập tức loại bỏ
+    
+    # Chặn các khu vực (không phải đường đi dạng tuyến)
+    if tags.get("area") == "yes":
+        return False
 
+    # Chặn đường tư nhân, khu nội bộ, quân sự
+    access = tags.get("access")
+    if access in ["private", "no", "customers", "delivery", "military"]:
+        return False
+
+    # Chặn đường cấm xe cơ giới / cấm xe máy (dù nó là residential)
+    if tags.get("motor_vehicle") == "no" or tags.get("motorcycle") == "no":
+        return False
+        
+    # Chặn đường vành đai sân bay (aeroway)
+    if tags.get("aeroway"):
+        return False
+        
+    # Chặn đường đang thi công hoặc dự án chưa xây xong
+    if highway in ["construction", "proposed"] or tags.get("construction"):
+        return False
+        
+    # Với highway=service, chặn những loại chuyên biệt vô dụng, GIỮ LẠI TẤT CẢ PHẦN CÒN LẠI
+    if highway == "service":
+        service_type = tags.get("service")
+        if service_type in ["parking_aisle", "driveway", "drive-through"]:
+            return False
+
+    # Nếu qua được hết các màng lọc trên, đây là con đường an toàn để đi
+    return True
 
 def _is_oneway(tags, highway):
     oneway = (tags.get("oneway") or "").lower()
@@ -51,11 +75,11 @@ class OSMNetworkHandler(osmium.SimpleHandler):
     def node(self, n):
         if not n.location.valid():
             return
-        self.nodes[n.id] = (n.location.lon, n.location.lat)
+        is_traffic_signal = (n.tags.get("highway") == "traffic_signals")
+        self.nodes[n.id] = (n.location.lon, n.location.lat, is_traffic_signal)
 
     def way(self, w):
-        highway = w.tags.get("highway")
-        if not highway or not _is_driving_highway(highway):
+        if not is_valid_motorcycle_edge(w.tags):
             return
         node_ids = [n.ref for n in w.nodes]
         if len(node_ids) < 2:
@@ -74,8 +98,8 @@ def main():
         handler.apply_file(PBF_INPUT, locations=True)
 
         node_rows = []
-        for node_id, (lon, lat) in handler.nodes.items():
-            node_rows.append({"osmid": node_id, "x": lon, "y": lat})
+        for node_id, (lon, lat, is_signal) in handler.nodes.items():
+            node_rows.append({"osmid": node_id, "x": lon, "y": lat, "traffic_signals": is_signal})
 
         nodes_gdf = gpd.GeoDataFrame(
             node_rows,
@@ -96,8 +120,8 @@ def main():
             for u, v in zip(way["node_ids"][:-1], way["node_ids"][1:]):
                 if u not in handler.nodes or v not in handler.nodes:
                     continue
-                u_lon, u_lat = handler.nodes[u]
-                v_lon, v_lat = handler.nodes[v]
+                u_lon, u_lat, _ = handler.nodes[u]
+                v_lon, v_lat, _ = handler.nodes[v]
                 length = ox.distance.great_circle(u_lat, u_lon, v_lat, v_lon)
                 geometry = LineString([(u_lon, u_lat), (v_lon, v_lat)])
 

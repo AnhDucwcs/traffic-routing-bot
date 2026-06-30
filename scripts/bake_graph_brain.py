@@ -21,19 +21,21 @@ def bake_graph_brain():
         data['is_bus_route'] = False
 
         hw = data.get('highway', 'unclassified')
-        speed_kmh = 15.0
         if isinstance(hw, list): 
             hw = hw[0]
-            if hw in ['trunk', 'trunk_link', 'primary', 'primary_link']:
-                speed_kmh = 45.0
-            elif hw in ['secondary', 'secondary_link']:
-                speed_kmh = 40.0
-            elif hw in ['tertiary', 'tertiary_link']:
-                speed_kmh = 35.0
-            elif hw in ['residential', 'living_street']:
-                speed_kmh = 30.0
-            else:
-                speed_kmh = 20.0
+            
+        if hw in ['trunk', 'trunk_link', 'primary', 'primary_link']:
+            speed_kmh = 45.0
+        elif hw in ['secondary', 'secondary_link']:
+            speed_kmh = 40.0
+        elif hw in ['tertiary', 'tertiary_link']:
+            speed_kmh = 35.0
+        elif hw in ['residential', 'unclassified']:
+            speed_kmh = 30.0
+        elif hw in ['service', 'living_street']:
+            speed_kmh = 20.0
+        else:
+            speed_kmh = 15.0
 
         # Lấy chiều dài (mét)
         length = data.get('length', 0.0)
@@ -46,7 +48,12 @@ def bake_graph_brain():
             length = 10.0
 
         speed_ms = speed_kmh * 1000 / 3600
-        base_time = length / speed_ms
+        
+        EXPECTED_SIGNAL_DELAY = 15.0 
+        has_signal = G.nodes[v].get('traffic_signals', False)
+        signal_penalty_seconds = EXPECTED_SIGNAL_DELAY if has_signal else 0.0
+        
+        base_time = (length / speed_ms) + signal_penalty_seconds
 
         # Tiêm các thông số mới vào Edge
         data['base_time'] = round(base_time, 2)
@@ -99,8 +106,9 @@ def calc_turn_penalty(graph, prev_node, current_node, next_node):
         return 0.0
         
     # 1. BỘ LỌC NGÃ TƯ: Bỏ qua các "khúc cua" (Shape Nodes)
-    # out_degree <= 1 nghĩa là đến node này chỉ có 1 đường duy nhất để đi tiếp -> Không phải ngã rẽ
-    if graph.out_degree(current_node) <= 1:
+    # Lấy các hướng đi tiếp (bỏ hướng quay đầu về prev_node)
+    forward_options = [n for n in graph.successors(current_node) if n != prev_node]
+    if len(forward_options) <= 1:
         return 0.0 
 
     # 2. XÁC ĐỊNH ĐỊA HÌNH: Đang ở hẻm hay đại lộ?
@@ -142,7 +150,7 @@ def calc_turn_penalty(graph, prev_node, current_node, next_node):
         return 5.0 if is_alley else 25.0  
         
     elif -150 <= angle_deg < -20:
-        return 0.0 if is_alley else 5.0   
+        return 2.0 if is_alley else 5.0   
         
     else:
         return 0.0   # Đi thẳng
@@ -172,5 +180,5 @@ def bake_turn_penalties():
     print(f"Đã cooked {len(turn_penalties)} góc rẽ phạt!")
 
 if __name__ == "__main__":
-    # bake_graph_brain()
+    bake_graph_brain()
     bake_turn_penalties()  # hoặc cho bake_graph_brain() trả về G rồi sau đó truyền G vào bake_turn_penalties(G) để tránh phải load lại đồ thị một lần nữa.
