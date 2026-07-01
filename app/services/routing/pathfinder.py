@@ -45,7 +45,7 @@ def custom_astar_path(traffic_manager, source, target, heuristic_func):
                 if curr_state[0] is not None:
                     path.append(curr_state[0])
             path.reverse()
-            return path
+            return path, current_g
         
         # Nếu nhánh hiện tại có chi phí đắt hơn nhánh đã khám phá, bỏ qua
         if current_g > g_score.get((current, prev_node), float('inf')):
@@ -98,7 +98,7 @@ async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float
 
     # Run A* in a separate thread to avoid blocking the event loop, since it's CPU-bound
     try:
-        path = await asyncio.to_thread(
+        path, total_time_s = await asyncio.to_thread(
             custom_astar_path,
             traffic_manager,
             start_node,
@@ -107,7 +107,6 @@ async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float
         )
         
         total_distance_m = 0
-        total_time_s = 0
         edge_times = []
         
         for i in range(len(path) - 1):
@@ -118,7 +117,6 @@ async def find_shortest_path(traffic_manager, start_lat: float, start_lng: float
             
             edge_time_s = best_edge.get('current_weight', 0)
             total_distance_m += best_edge.get('length', 0)
-            total_time_s += edge_time_s
             edge_times.append(round(edge_time_s / 60, 4)) # Store time in minutes per edge
         
         distance_km = round(total_distance_m / 1000, 2)
