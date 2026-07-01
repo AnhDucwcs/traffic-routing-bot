@@ -33,7 +33,7 @@ def is_valid_motorcycle_edge(tags):
 
     # Chặn đường tư nhân, khu nội bộ, quân sự
     access = tags.get("access")
-    if access in ["private", "no", "customers", "delivery", "military"]:
+    if access in ["private", "no", "customers", "delivery", "military", "permit"]:
         return False
 
     # Chặn đường cấm xe cơ giới / cấm xe máy (dù nó là residential)
@@ -71,10 +71,16 @@ class OSMNetworkHandler(osmium.SimpleHandler):
         super().__init__()
         self.nodes = {}
         self.ways = []
+        self.blocked_node_ids = set()
 
     def node(self, n):
         if not n.location.valid():
             return
+        barrier = n.tags.get("barrier")
+        access = n.tags.get("access")
+        if barrier in ["gate", "lift_gate", "block", "bollard", "fence"]:
+            if access in ["no", "private", "permissive", "military", "permit"] or not access:
+                self.blocked_node_ids.add(n.id)
         is_traffic_signal = (n.tags.get("highway") == "traffic_signals")
         self.nodes[n.id] = (n.location.lon, n.location.lat, is_traffic_signal)
 
@@ -83,6 +89,8 @@ class OSMNetworkHandler(osmium.SimpleHandler):
             return
         node_ids = [n.ref for n in w.nodes]
         if len(node_ids) < 2:
+            return
+        if not self.blocked_node_ids.isdisjoint(node_ids):
             return
         self.ways.append({"id": w.id, "node_ids": node_ids, "tags": dict(w.tags)})
 
