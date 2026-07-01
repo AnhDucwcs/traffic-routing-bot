@@ -22,23 +22,30 @@ def calc_time_from_euclidean(u, v, graph):
     x1, y1 = graph.nodes[u]['x'], graph.nodes[u]['y']
     x2, y2 = graph.nodes[v]['x'], graph.nodes[v]['y']
     h = math.hypot(x2 - x1, y2 - y1)
-    t = h / 22.2  # Tốc độ là 80km/h
+    t = h / 12.5 # Tốc độ là 45km/h
     return t
 
 def custom_astar_path(traffic_manager, source, target, heuristic_func):
     """Thuật toán A* tùy chỉnh, hỗ trợ phạt góc rẽ và dùng Min-Heap (O(log N))"""
     c = itertools.count()
     open_set = []
-    heapq.heappush(open_set, (0, next(c), source, [source], 0))
+    heapq.heappush(open_set, (0, next(c), source, None, 0))
     g_score = {(source, None): 0}
     
+    came_from = {}
+    
     while open_set:
-        f, _, current, path, current_g = heapq.heappop(open_set)
+        f, _, current, prev_node, current_g = heapq.heappop(open_set)
         
         if current == target:
+            path = [current]
+            curr_state = (current, prev_node)
+            while curr_state in came_from:
+                curr_state = came_from[curr_state]
+                if curr_state[0] is not None:
+                    path.append(curr_state[0])
+            path.reverse()
             return path
-            
-        prev_node = path[-2] if len(path) > 1 else None
         
         # Nếu nhánh hiện tại có chi phí đắt hơn nhánh đã khám phá, bỏ qua
         if current_g > g_score.get((current, prev_node), float('inf')):
@@ -61,7 +68,8 @@ def custom_astar_path(traffic_manager, source, target, heuristic_func):
             if tentative_g < g_score.get((neighbor, current), float('inf')):
                 g_score[(neighbor, current)] = tentative_g
                 f_score = tentative_g + h_val
-                heapq.heappush(open_set, (f_score, next(c), neighbor, path + [neighbor], tentative_g))
+                came_from[(neighbor, current)] = (current, prev_node)
+                heapq.heappush(open_set, (f_score, next(c), neighbor, current, tentative_g))
                 
     raise nx.NetworkXNoPath(f"Không tìm thấy đường từ {source} đến {target}")
 
