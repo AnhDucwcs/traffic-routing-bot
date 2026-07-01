@@ -19,9 +19,22 @@ class CrawlerScheduler:
             segment_id = item['segment_id']
                 
             self.traffic_manager.apply_traffic_penalty(segment_id, speed_kmh)
+    
+    async def hydrate_ram(self):
+        """Phục hồi dữ liệu kẹt xe từ MongoDB lên RAM khi khởi động"""
+        try:
+            hot_data = await self.hot_storage.get_active_traffic_data()
+            if hot_data:
+                self._update_hot_db(hot_data)
+                logger.info(f"🚀 State Hydration: Đã phục hồi thần tốc {len(hot_data)} đoạn đường kẹt xe từ MongoDB vào RAM!")
+            else:
+                logger.info("Database trống, chờ đợt crawl đầu tiên...")
+        except Exception as e:
+            logger.error(f"Lỗi khi phục hồi RAM từ DB: {e}")
 
     async def _background_loop(self):
         vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+        await self.hydrate_ram()
         try:
             while True:
                 now_vn = datetime.now(vn_tz)

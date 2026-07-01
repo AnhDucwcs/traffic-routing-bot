@@ -94,3 +94,17 @@ class HotStorageManager:
                 logger.error(f"[Hot DB] Lỗi khi ghi hàng loạt: {bwe.details}")
             except Exception as e:
                 logger.error(f"[Hot DB] Lỗi kết nối hoặc thực thi Database: {e}")
+    
+    async def get_active_traffic_data(self):
+        """Kéo toàn bộ dữ liệu kẹt xe còn hạn (chưa bị TTL xóa) từ MongoDB"""
+        cursor = self.collection.find({})
+        hot_data = []
+        async for document in cursor:
+            from_stop = document.get("from_stop_id")
+            to_stop = document.get("to_stop_id")
+            if from_stop and to_stop:
+                hot_data.append({
+                    "segment_id": f"{from_stop}_{to_stop}",
+                    "speed_kmh": document.get("speed_kmh", 25.0)
+                })
+        return hot_data
