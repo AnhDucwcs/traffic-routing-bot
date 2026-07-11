@@ -76,8 +76,7 @@ def custom_astar_path(traffic_manager, start_edge: tuple, p_start: tuple, end_ed
                     path.append(curr_state[0])
             path.reverse()
             final_segment_time = current_g + calc_time_from_point_to_node(p_end, current, traffic_manager.G)
-            final_time = final_segment_time + current_g
-            return path, final_time
+            return path, final_segment_time
         
         # Nếu nhánh hiện tại có chi phí đắt hơn nhánh đã khám phá, bỏ qua
         if current_g > g_score.get((current, prev_node), float('inf')):
