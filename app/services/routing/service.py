@@ -21,7 +21,17 @@ class RoutingService:
             line = geom_dict.get((u, v, best_key))
             
             if line:
-                for x, y in line.coords:
+                coords = list(line.coords)
+                u_x, u_y = traffic_manager.G.nodes[u]['x'], traffic_manager.G.nodes[u]['y']
+                
+                # So sánh khoảng cách để biết LineString có bị ngược chiều xe chạy không
+                dist_to_start = (coords[0][0] - u_x)**2 + (coords[0][1] - u_y)**2
+                dist_to_end = (coords[-1][0] - u_x)**2 + (coords[-1][1] - u_y)**2
+                
+                # Nếu ngược, lật mảng lại!
+                if dist_to_end < dist_to_start:
+                    coords = coords[::-1]
+                for x, y in coords:
                     lng, lat = transformer_back.transform(x, y)
                     if not coordinates or coordinates[-1] != (lng, lat):
                         coordinates.append((lng, lat))
