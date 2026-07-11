@@ -54,7 +54,7 @@ async def process_routing_background(payload: RoutingRequest, app_state):
     if path is None:
         data = create_error_response(user_id, conversation_id, "Không tìm thấy lộ trình phù hợp.")
     else:
-        geojson = app_state.routing_service.to_geojson(traffic_manager, path, edge_times)
+        geojson = app_state.routing_service.to_geojson(traffic_manager, path, app_state.geom_dict, edge_times)
         route_id = str(uuid.uuid4())
         app_state.route_results[route_id] = {
             "geojson": geojson,
