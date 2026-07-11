@@ -106,7 +106,7 @@ def custom_astar_path(traffic_manager, start_edge: tuple, p_start: tuple, end_ed
     raise nx.NetworkXNoPath(f"Không tìm thấy đường từ {p_start} đến {p_end}")
 
 async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, start_lng: float, end_lat: float, end_lng: float):
-    to_graph, _ = _get_transformers(traffic_manager.G)
+    to_graph, to_wgs84 = _get_transformers(traffic_manager.G)
 
     if to_graph:
         start_x, start_y = to_graph.transform(start_lng, start_lat)
@@ -120,6 +120,11 @@ async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, sta
     end_u, end_v, p_end_x, p_end_y, dist = map_matcher.snap_to_edge(end_x, end_y, max_dist_m=50.0)
     logger.info(f"Nhận được yêu cầu tìm đường từ ({start_lat}, {start_lng}) đến ({end_lat}, {end_lng})")
     logger.info(f"Start point: ({p_start_x}, {p_start_y}), End point: ({p_end_x}, {p_end_y})")
+    
+    if to_wgs84:
+        start_lng, start_lat = to_wgs84.transform(p_start_x, p_start_y)
+        end_lng, end_lat = to_wgs84.transform(p_end_x, p_end_y)
+        logger.info(f"Điểm xuất phát sau khi chiếu: ({start_lat}, {start_lng}), Điểm đích sau khi chiếu: ({end_lat}, {end_lng})")
 
     if start_u == end_u and start_v == end_v:
         logger.info("Điểm xuất phát và điểm đích nằm trên cùng một cạnh. Không cần tìm đường.")
@@ -156,11 +161,11 @@ async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, sta
         distance_km = round(total_distance_m / 1000, 2)
         estimated_time_min = round(total_time_s / 60, 2)
         logger.info(f"Tìm thấy đường đi: {distance_km} km, thời gian dự kiến: {estimated_time_min} phút")
-        return path, distance_km, estimated_time_min, edge_times
+        return path, distance_km, estimated_time_min, edge_times, start_lng, start_lat, end_lng, end_lat
     except nx.NetworkXNoPath:
         logger.info("Không tìm thấy đường đi giữa hai điểm.")
-        return None, None, None, None
+        return None, None, None, None, None, None, None, None
     except Exception as e:
         logger.exception(f"Lỗi: {e}")
-        return None, None, None, None
+        return None, None, None, None, None, None, None, None
     

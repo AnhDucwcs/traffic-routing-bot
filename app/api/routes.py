@@ -45,7 +45,7 @@ async def process_routing_background(payload: RoutingRequest, app_state):
     logger.info(f"Yêu cầu lộ trình từ ({start_lat}, {start_lng}) đến ({end_lat}, {end_lng})")
     traffic_manager = app_state.traffic_manager
     map_matcher = app_state.map_matcher
-    path, distance_km, estimated_time_min, edge_times = await app_state.routing_service.find_path(traffic_manager, map_matcher, start_lat, start_lng, end_lat, end_lng)
+    path, distance_km, estimated_time_min, edge_times, source_lng, source_lat, dest_lng, dest_lat = await app_state.routing_service.find_path(traffic_manager, map_matcher, start_lat, start_lng, end_lat, end_lng)
 
     # Đo thời gian
     execution_time = time.perf_counter() - start_time
@@ -56,7 +56,7 @@ async def process_routing_background(payload: RoutingRequest, app_state):
     else:
         geojson = app_state.routing_service.to_geojson(
             traffic_manager, path, app_state.geom_dict, 
-            start_lng, start_lat, end_lng, end_lat, 
+            source_lng, source_lat, dest_lng, dest_lat,
             edge_times
         )
         route_id = str(uuid.uuid4())
