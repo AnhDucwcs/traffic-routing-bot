@@ -40,7 +40,9 @@ pip install -r requirements.txt
 ```bash
 osmium extract -b 106.58,10.70,106.82,10.88 data/vietnam-latest.osm.pbf -o data/hcmc_urban_core.osm.pbf
 ```
+Có thể truy cập https://bboxfinder.com/ để xem phạm vi
 
+![alt text](hcmc_urban_core.png)
 ### 4. Lọc chỉ giữ dữ liệu đường (highway tags)
 
 ```bash
@@ -158,11 +160,9 @@ Hoặc chạy trên HuggingFace Spaces:
     4. Khi trả lời truy vấn routing, `pathfinder` vận hành trên đồ thị đã tiền xử lý và có thể điều chỉnh chi phí cạnh bằng dữ liệu thời gian thực từ `traffic_manager`.
 
 - Routing:
-    1. Thiết kế hàm heuristic theo đường chim bay, kết quả trả về là thời gian tốt nhất với vận tốc chung là 80km/h.
+    1. Thiết kế hàm heuristic theo đường chim bay, kết quả trả về là thời gian tốt nhất với vận tốc chung là 45km/h.
     2. Thiết kế hàm custom_astar_path sử dụng các trọng số phạt đã được hệ thống tính toán trước, sử dụng min heap để tăng tốc.
     3. Hàm find_shortest_path sử dụng custom_astar_path để tìm đường, hàm custom_astar_path được đặt trong asyncio.to_thread để tránh CPU-Bound.
-    4. Chuyển đổi path tìm được thành google maps url bằng cách rút gọn những điểm trên đường đi thành nhiều nhất 8 điểm trung gian, ghép vào chuỗi string url được thiết kế sẵn.
-    5. Hàm rút gọn các điểm trung gian hiện đang được thực hiện bằng phương pháp sử dụng góc rẽ để tính, hiện đang chọn các điểm có góc lớn hơn 25 độ và cuối cùng là lọc ra các điểm cách nhau ít nhất 2 điểm. Nếu kết quả quá 8 điểm thì tiến hành lọc thêm một lần nữa đảm bảo kết quả luôn nhỏ hơn hoặc bằng 8.
 
 - Crawling Bus Data:
     1. Đọc danh sách các bến xe trong phạm vi nội thành từ `data/master_stops.json`.
@@ -170,8 +170,8 @@ Hoặc chạy trên HuggingFace Spaces:
     3. Sử dụng api_2 https://apicms.ebms.vn/prediction/{route_id}/{var_id}/{stop_id}/predictnextstops/1 để lấy thông tin dự đoán cho `1` trạm xe tiếp theo tính từ trạm hiện tại. 
     4. Khi sử dụng api_2 sẽ kiểm tra đúng biển số xe buýt để đảm bảo tránh lệch thông tin.
     5. Giá trị vận tốc khi đẩy lên `HOT_DB` sẽ được tính bằng cách lấy giá trị trung bình vận tốc của các xe trong segment ({pre_stop_id}_{cur_stop_id}) hiện tại thay vì lựa chọn giá trị nhỏ nhất để có thểm tính chính xác cho dữ liệu.
-    5. Kết quả từ api_1 đã đủ để sử dụng, có thể đẩy lên `HOT_DB`. Tuy nhiên để có dữ liệu phục vị cho việc thống kê hay huấn luyện mô hình AI sau này thì cần `COLD_DB` dựa trên kết quả tính toán sau khi có dữ liệu từ api_2.
-    6. Sử dụng một proxy Việt Nam để tránh bị API chặn khi triển khai lên HF. Hệ thống cào dữ liệu sẽ được hoạt động từ 5h30 đến 21h30, khi ngoài thời gian này, hệ thống cào sẽ tiến hành ngủ để tránh lãng phí.
+    6. Kết quả từ api_1 đã đủ để sử dụng, có thể đẩy lên `HOT_DB`. Tuy nhiên để có dữ liệu phục vị cho việc thống kê hay huấn luyện mô hình AI sau này thì cần `COLD_DB` dựa trên kết quả tính toán sau khi có dữ liệu từ api_2.
+    7. Sử dụng một proxy Việt Nam để tránh bị API chặn khi triển khai lên HF. Hệ thống cào dữ liệu sẽ được hoạt động từ 5h30 đến 21h30, khi ngoài thời gian này, hệ thống cào sẽ tiến hành ngủ để tránh lãng phí.
 
 ## Tổng kết
 
