@@ -61,3 +61,36 @@ def load_turn_penalties():
     
     logger.info(f"Turn penalties loaded.")
     return turn_penalties
+
+def load_feather_data(target_crs):
+    logger.info("Loading feather data from disk...")
+    
+    curent_dir = Path(__file__).resolve().parent
+    src_dir = curent_dir.parent.parent.parent
+    feather_path = src_dir / "data" / "hcmc_geometry_store.feather"
+    
+    if not feather_path.exists():
+        raise FileNotFoundError(f"Feather data file not found at {feather_path}. Please run the build_offline_graph.py script first.")
+    
+    import geopandas as gpd
+    from shapely.strtree import STRtree
+    import gc
+    
+    edges_gdf = gpd.read_feather(feather_path)
+    edges_gdf = edges_gdf.set_crs("EPSG:4326", allow_override=True).to_crs(target_crs)  # Bịp thật, đã chuyển graph sang UTM rồi mà geometry vẫn là độ, xong nó còn gắn nhãn là UTM nữa chứ :)))
+    
+    # Build STRtree for spatial indexing
+    geometries = edges_gdf['geometry'].tolist()
+    edge_ids = edges_gdf[['u', 'v', 'key']].to_numpy()  # Kèm theo mảng ID để biết cạnh nào tương ứng với hình nào
+    strtree = STRtree(geometries)
+    
+    # Lưu geometries và edge_ids vào một dictionary để truy xuất sau này
+    geom_dict = {}
+    for idx, row in edges_gdf.iterrows():
+        geom_dict[(row['u'], row['v'], row['key'])] = row['geometry']
+    
+    del edges_gdf
+    gc.collect()
+    
+    logger.info("STRtree built and feather data loaded.")
+    return strtree, edge_ids, geom_dict
