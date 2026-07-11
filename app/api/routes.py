@@ -45,25 +45,31 @@ async def process_routing_background(payload: RoutingRequest, app_state):
     logger.info(f"Yêu cầu lộ trình từ ({start_lat}, {start_lng}) đến ({end_lat}, {end_lng})")
     traffic_manager = app_state.traffic_manager
     map_matcher = app_state.map_matcher
-    path, distance_km, estimated_time_min, edge_times, source_lng, source_lat, dest_lng, dest_lat = await app_state.routing_service.find_path(traffic_manager, map_matcher, start_lat, start_lng, end_lat, end_lng)
+    try:
+        path, distance_km, estimated_time_min, edge_times, source_lng, source_lat, dest_lng, dest_lat = await app_state.routing_service.find_path(traffic_manager, map_matcher, start_lat, start_lng, end_lat, end_lng)
 
-    # Đo thời gian
-    execution_time = time.perf_counter() - start_time
-    logger.info(f"Tính toán lộ trình mất {execution_time:.4f} giây")
+        # Đo thời gian
+        execution_time = time.perf_counter() - start_time
+        logger.info(f"Tính toán lộ trình mất {execution_time:.4f} giây")
 
-    if path is None:
-        data = create_error_response(user_id, conversation_id, "Không tìm thấy lộ trình phù hợp.")
-    else:
-        geojson = app_state.routing_service.to_geojson(
-            traffic_manager, path, app_state.geom_dict, 
-            source_lng, source_lat, dest_lng, dest_lat,
-            edge_times
-        )
-        route_id = str(uuid.uuid4())
-        app_state.route_results[route_id] = {
-            "geojson": geojson,
-        }
-        data = create_success_response(user_id, conversation_id, geojson, route_id, distance_km, estimated_time_min)
+        if path is None:
+            data = create_error_response(user_id, conversation_id, "Không tìm thấy lộ trình phù hợp.")
+        else:
+            geojson = app_state.routing_service.to_geojson(
+                traffic_manager, path, app_state.geom_dict, 
+                source_lng, source_lat, dest_lng, dest_lat,
+                edge_times
+            )
+            route_id = str(uuid.uuid4())
+            app_state.route_results[route_id] = {
+                "geojson": geojson,
+            }
+            data = create_success_response(user_id, conversation_id, geojson, route_id, distance_km, estimated_time_min)
+    except ValueError as e:
+        data = create_error_response(user_id, conversation_id, str(e))
+    except Exception as e:
+        logger.exception(f"Lỗi khi xử lý lộ trình: {e}")
+        data = create_error_response(user_id, conversation_id, f"Lỗi khi xử lý lộ trình: {e}")
 
     response_payload = data.model_dump()
  
