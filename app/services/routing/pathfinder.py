@@ -82,10 +82,12 @@ def custom_astar_path(traffic_manager, start_edge: tuple, p_start: tuple, end_ed
             continue
             
         for neighbor in traffic_manager.G.successors(current):
-            # Lấy trọng số thực tế (xử lý MultiDiGraph)
+            # Lấy trọng số từ active_weights (Double Buffer, lock-free)
             edges = traffic_manager.G[current][neighbor]
-            edge_data = min(edges.values(), key=lambda x: x.get('current_weight', float('inf')))
-            travel_time = edge_data.get('current_weight', 10.0)
+            travel_time = min(
+                traffic_manager.active_weights.get((current, neighbor, k), 10.0)
+                for k in edges
+            )
             
             # GỌI HÀM PHẠT GÓC RẼ
             turn_penalty = traffic_manager.turn_penalties.get((prev_node, current, neighbor), 0.0)
@@ -150,11 +152,11 @@ async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, sta
             u, v = path[i], path[i + 1]
             edges = traffic_manager.G[u][v]
             
-            best_edge = min(edges.values(), key=lambda x: x.get('current_weight', float('inf')))
-            
-            edge_time_s = best_edge.get('current_weight', 0)
-            total_distance_m += best_edge.get('length', 0)
-            edge_times.append(round(edge_time_s / 60, 4)) # Lưu thời gian đi qua từng cạnh (phút) với 4 chữ số thập phân
+            # Tìm key có trọng số nhỏ nhất từ active_weights
+            best_k = min(edges, key=lambda k: traffic_manager.active_weights.get((u, v, k), 10.0))
+            edge_time_s = traffic_manager.active_weights.get((u, v, best_k), 10.0)
+            total_distance_m += edges[best_k].get('length', 0)
+            edge_times.append(round(edge_time_s / 60, 4))
         
         distance_km = round(total_distance_m / 1000, 2)
         estimated_time_min = round(total_time_s / 60, 2)
