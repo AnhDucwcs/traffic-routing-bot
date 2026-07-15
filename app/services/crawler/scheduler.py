@@ -14,11 +14,7 @@ class CrawlerScheduler:
         self._stopped = asyncio.Event()
         
     def _update_hot_db(self, traffic_data):
-        for item in traffic_data:
-            speed_kmh = item['speed_kmh'] 
-            segment_id = item['segment_id']
-                
-            self.traffic_manager.apply_traffic_penalty(segment_id, speed_kmh)
+        self.traffic_manager.batch_apply_traffic_penalty(traffic_data)
     
     async def hydrate_ram(self):
         """Phục hồi dữ liệu kẹt xe từ MongoDB lên RAM khi khởi động"""

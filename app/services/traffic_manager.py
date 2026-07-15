@@ -92,6 +92,53 @@ class TrafficManager:
         # Atomic pointer swap: GIL đảm bảo an toàn
         self.active_weights = self.bg_weights.copy()
 
+    def batch_apply_traffic_penalty(self, traffic_data: list, spillover_alpha: float = 0.15):
+        """
+        Ghi toàn bộ penalty vào bg_weights, swap pointer MỘT LẦN ở cuối.
+        Tránh copy dict N lần khi có N segments.
+        """
+        for item in traffic_data:
+            segment_id = item.get('segment_id')
+            crawler_speed_kmh = item.get('speed_kmh')
+            if not segment_id or not crawler_speed_kmh:
+                continue
+
+            target_edges = self.segment_index.get(segment_id, [])
+            if not target_edges:
+                continue
+
+            for u, v, k in target_edges:
+                edge_data = self.G[u][v][k]
+                base_time = edge_data.get('base_time', 10.0)
+                base_speed_kmh = edge_data.get('speed_kmh', 25.0)
+                if crawler_speed_kmh <= base_speed_kmh:
+                    penalty_factor = base_speed_kmh / crawler_speed_kmh
+                else:
+                    penalty_factor = 1.0
+                penalty_factor = min(penalty_factor, 10.0)
+                self.bg_weights[(u, v, k)] = base_time * penalty_factor
+
+                if penalty_factor > 1.0:
+                    spillover_penalty = 1 + (penalty_factor - 1) * spillover_alpha
+                else:
+                    spillover_penalty = 1.0
+
+                for node in (u, v):
+                    for neighbor in self.G.successors(node):
+                        if neighbor in (u, v):
+                            continue
+                        for neighbor_k in self.G[node][neighbor]:
+                            neighbor_edge = self.G[node][neighbor][neighbor_k]
+                            if not neighbor_edge.get('is_bus_route', False):
+                                neighbor_base = neighbor_edge.get('base_time', 10.0)
+                                new_weight = neighbor_base * spillover_penalty
+                                current = self.bg_weights.get((node, neighbor, neighbor_k), neighbor_base)
+                                if current < new_weight:
+                                    self.bg_weights[(node, neighbor, neighbor_k)] = new_weight
+
+        # Swap MỘT LẦN duy nhất
+        self.active_weights = self.bg_weights.copy()
+
     def reset_traffic(self):
         """Reset toàn bộ về base_time"""
         self.bg_weights = {
