@@ -92,7 +92,7 @@ def custom_astar_path(traffic_manager, start_edge: tuple, p_start: tuple, end_ed
             turn_penalty = traffic_manager.turn_penalties.get((prev_node, current, neighbor), 0.0)
                           
             # Ép xung A* với Bounded Suboptimal (Epsilon = 1.12)
-            h_val = heuristic_func(p_end, neighbor)
+            h_val = heuristic_func(p_end, neighbor) * 1.12
             
             tentative_g = current_g + travel_time + turn_penalty
             
