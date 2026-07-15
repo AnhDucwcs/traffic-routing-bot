@@ -1,5 +1,4 @@
 import networkx as nx
-import osmnx as ox
 import asyncio
 import math
 import heapq
