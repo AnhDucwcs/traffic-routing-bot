@@ -6,6 +6,8 @@ git checkout --orphan hf-temp
 
 git rm -rf --cached . 2>$null
 
+Add-Content .gitignore "`n*.png`n*.jpg`n*.jpeg" -ErrorAction SilentlyContinue
+
 git add .
 git add -f data\hcmc_routing_brain_v2.pkl
 git add -f data\turn_penalties.pkl
