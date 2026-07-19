@@ -11,7 +11,7 @@ pinned: false
 Mô tả ngắn gọn:
 - Hệ thống backend độc lập cung cấp API định tuyến giao thông tối ưu bằng cách sử dụng những con hẻm cho khu vực nội thành Thành phố Hồ Chí Minh.
 - Xử lý dữ liệu OSM offline để dựng đồ thị định tuyến, lưu trữ artifacts địa lý và phục vụ các truy vấn đường đi qua một REST API.
-- Có thể sử dụng trực tiếp với Telegram: tìm @TrafficRouting_bot và nhập `/start` để bắt đầu, `/route` và chọn chia sẻ vị trí để tiến hành tìm đường.
+- Có thể sử dụng trực tiếp với Telegram: tìm @TrafficRouting_bot và nhập `/start` để bắt đầu. Cách sử dụng khuyên dùng là nhấn vào nút **Menu (Mini App)** ở góc dưới bên trái để mở trực tiếp giao diện bản đồ trực quan. Ngoài ra, bạn vẫn có thể dùng cách cũ là nhập lệnh `/route` và gửi tọa độ chia sẻ vị trí để tìm đường.
 
 ## Yêu cầu trước khi cài đặt
 - Python 3.12.x (Hiện đang sử dụng)
@@ -59,8 +59,8 @@ Thư mục `scripts/` chứa các công cụ tiền xử lý và sinh artifacts.
 python -m scripts/build_offline_graph.py
 ```
 Kết quả:
-- `hcmc_routing_brain.pkl`
-- `hcmc_geometry_store.feather`
+- `data/hcmc_routing_brain_v1.pkl`
+- `data/hcmc_geometry_store.feather`
 
 2. Lấy dữ liệu các trạm trong phạm vi:
 
@@ -68,9 +68,9 @@ Kết quả:
 python scripts/setup_master_data.py
 ```
 Kết quả:
-- `scripts/setup_master_data.py`
+- `data/master_stops.json`
 
-3. Chuẩn hóa master data, map segments lên graph:
+3. Chuẩn hóa master data, map segments lên graph, xây dựng route stop sequence:
 
 ```bash
 python scripts/build_segment_lengths.py
@@ -78,19 +78,20 @@ python scripts/map_segments_to_graph.py
 python scripts/build_route_stop_sequence.py
 ```
 Kết quả:
-- `segment_lengths_v1.json`
-- `segment_lengths_v2.json`
-- `route_stop_sequence.json`
+- `data/segment_lengths_v1.json`
+- `data/segment_lengths_v2.json`
+- `data/route_stop_sequence.json`
 
-4. Đóng gói graph (tạo "brain") và kiểm tra:
+4. Đóng gói graph (tạo "brain" V2) kèm theo góc rẽ phạt:
 
 ```bash
 python scripts/bake_graph_brain.py
 python scripts/inspect_brain.py
 ```
 Kết quả:
-- `hcmc_routing_brain_v2.pkl`
-- `turn_penalties.pkl`
+- `data/hcmc_routing_brain_v2.pkl`
+- `data/turn_penalties.pkl`
+
 
 ## Cấu hình môi trường
 
@@ -112,9 +113,13 @@ docker build -t traffic-routing-bot .
 docker run --env-file .env -p 7860:7860 traffic-routing-bot
 ```
 
-Hoặc chạy trên HuggingFace Spaces:
-- Tạo space mới, thêm biến .env.
-- Upload files (dùng LFS cho các file trong `data/`, có thể loại bỏ các file *_v1.pkl hoặc *_v1.json để tránh quá dung lượng HF cung cấp).
+Hoặc triển khai tự động lên HuggingFace Spaces:
+- Tạo Space mới (môi trường Docker), thiết lập các biến môi trường `.env` trên giao diện web.
+- Thêm remote git của Hugging Face với tên `hf` (ví dụ: `git remote add hf https://huggingface.co/spaces/...`).
+- Chạy script PowerShell tự động đóng gói và deploy (script sẽ tự tạo nhánh ảo, chỉ lựa chọn đẩy code và các file data V2 thiết yếu để tránh tràn dung lượng LFS):
+  ```powershell
+  .\scripts\deploy_hf.ps1
+  ```
 
 ## Kiến trúc và thành phần chính
 
@@ -129,14 +134,19 @@ Hoặc chạy trên HuggingFace Spaces:
 - `app/services/traffic/traffic_manager.py`: điều chỉnh chi phí cạnh theo dữ liệu thời gian thực.
 - `app/services/crawler/`: thu thập dữ liệu lịch trình và dữ liệu thời gian thực (bus crawler, scheduler).
 - `app/services/storage/`: tải dữ liệu đã cào lên các nơi lưu trữ.
-- `scripts/`: các tool tiền xử lý/offline artifacts.
+- `scripts/`: các tool phân tích, tiền xử lý offline artifacts và kịch bản triển khai hệ thống (deploy_hf.ps1).
 
 ## Dữ liệu và artifacts
 
-- `data/hcmc_routing_clean.osm.pbf`: OSM data đã lọc.
-- `data/hcmc_routing_brain_v2.pkl`: đồ thị định tuyến (pickle).
-- `data/hcmc_geometry_store.feather`: geometry store (feather).
-- `data/route_stop_sequence.json`, `data/segment_lengths_v2.json`, `data/master_stops.json`, `data/turn_penalties.pkl`: dữ liệu hỗ trợ mapping và routing.
+- `data/hcmc_routing_clean.osm.pbf`: OSM data đã lọc ban đầu.
+- `data/hcmc_routing_brain_v1.pkl`: đồ thị định tuyến gốc (trung gian).
+- `data/hcmc_geometry_store.feather`: geometry store phục vụ trích xuất tọa độ địa lý.
+- `data/master_stops.json`: danh sách toàn bộ các trạm xe buýt.
+- `data/segment_lengths_v1.json`: khoảng cách vật lý của các đoạn đường (trung gian).
+- `data/segment_lengths_v2.json`: kết quả sau khi đã nội suy và ánh xạ (map matching) các trạm dừng lên đồ thị định tuyến.
+- `data/route_stop_sequence.json`: thứ tự các trạm của từng tuyến xe buýt.
+- `data/hcmc_routing_brain_v2.pkl`: đồ thị định tuyến bản hoàn thiện (đã được tiêm trọng số cơ bản và đánh dấu ưu tiên xe buýt).
+- `data/turn_penalties.pkl`: trọng số phạt thời gian khi rẽ/quay đầu.
 - `HOT_DB`: phục vụ cho việc tính toán trọng số tức thời, TTL được cài đặt là 60 phút.
 - `COLD_DB`: phục vụ cho việc thống kê và huấn luyện mô hình AI dự đoán cho tương lai.
 
@@ -179,7 +189,7 @@ Hiện tại hệ thống đã ở trạng thái có thể chạy như một bac
 
 Hệ thống đã có thể cho ra con đường tối ưu hơn bằng cách sử dụng các con hẻm, tuy nhiên cần phải cập nhật thêm các trọng số phạt để có thể tăng độ chính xác và độ linh hoạt của hệ thống khi tìm đường.
 
-Hiện đang sử dụng Telegram là nền tảng chính để kiểm thử và sử dụng. Telegram cho phép sử dụng tính năng `chia sẻ vị trí` bằng điện thoại, tuy nhiên tính năng này có những điểm bất lợi là gây khó khăn trong việc tìm địa điểm làm giảm trải nghiệm người dùng.
+Hiện đang sử dụng Telegram là nền tảng chính để tương tác. Để khắc phục điểm yếu của tính năng `chia sẻ vị trí` truyền thống (gây khó khăn khi tìm địa điểm), hệ thống đã tích hợp thêm **Telegram Mini App** thông qua Custom Menu Button. Nâng cấp này mở ra một giao diện web bản đồ trực tiếp ngay trong Telegram, giúp người dùng thao tác chọn điểm đi và điểm đến trực quan, từ đó tối ưu hóa hoàn toàn trải nghiệm sử dụng.
 
 Hệ thống hiện tại vẫn chưa đảm bảo có thể đáp ứng nhiều người dùng cùng lúc.
 
