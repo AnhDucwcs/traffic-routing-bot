@@ -82,10 +82,12 @@ def custom_astar_path(traffic_manager, start_edge: tuple, p_start: tuple, end_ed
             continue
             
         for neighbor in traffic_manager.G.successors(current):
-            # Lấy trọng số từ active_weights (Double Buffer, lock-free)
             edges = traffic_manager.G[current][neighbor]
+            # ponytail: Chọn rổ thời gian dựa trên g_score tích lũy (900s = 15 phút)
+            time_idx = min(int(current_g // 900), 3)
+            tw = traffic_manager.time_weights[time_idx]
             travel_time = min(
-                traffic_manager.active_weights.get((current, neighbor, k), 10.0)
+                tw.get((current, neighbor, k), 10.0)
                 for k in edges
             )
             
@@ -152,9 +154,10 @@ async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, sta
             u, v = path[i], path[i + 1]
             edges = traffic_manager.G[u][v]
             
-            # Tìm key có trọng số nhỏ nhất từ active_weights
-            best_k = min(edges, key=lambda k: traffic_manager.active_weights.get((u, v, k), 10.0))
-            edge_time_s = traffic_manager.active_weights.get((u, v, best_k), 10.0)
+            # ponytail: Post-processing luôn dùng T0 (thời điểm hiện tại)
+            t0 = traffic_manager.time_weights[0]
+            best_k = min(edges, key=lambda k: t0.get((u, v, k), 10.0))
+            edge_time_s = t0.get((u, v, best_k), 10.0)
             total_distance_m += edges[best_k].get('length', 0)
             edge_times.append(round(edge_time_s / 60, 4))
         

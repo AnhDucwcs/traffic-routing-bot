@@ -1,6 +1,13 @@
 import json
+import pickle
+import pytz
 from pathlib import Path
+from datetime import datetime
 from app.core.logger import logger
+
+# ponytail: Night mode 21:30-05:30, A* fallback về base_time
+NIGHT_START_SLOT = 86   # 21*4 + 30//15
+NIGHT_END_SLOT = 22     # 5*4 + 30//15
 
 class TrafficManager:
     def __init__(self, routing_graph, turn_penalties):
@@ -8,13 +15,86 @@ class TrafficManager:
         self.turn_penalties = turn_penalties
         self.segment_index = {}
         
-        # Double Buffering: A* đọc active_weights, Crawler ghi bg_weights
-        # Python GIL đảm bảo pointer swap là atomic → không cần Lock
-        self.active_weights = {
+        # Base weights (bất biến, dùng làm fallback)
+        self._base_weights = {
             (u, v, k): data.get('base_time', 10.0)
             for u, v, k, data in self.G.edges(keys=True, data=True)
         }
-        self.bg_weights = self.active_weights.copy()
+        self.bg_weights = self._base_weights.copy()
+
+        # Load historical baseline cho T15/T30/T45
+        self._edge_baseline = {}
+        self._load_historical_baseline()
+
+        # Cache slot để tránh rebuild khi chưa đổi khung 15 phút
+        self._cached_slot = -1
+        self._future_dicts = (self._base_weights.copy(), self._base_weights.copy(), self._base_weights.copy())
+
+        # time_weights: (T0, T15, T30, T45) - Atomic swap via GIL
+        self.time_weights = (self._base_weights.copy(), *self._future_dicts)
+
+    @property
+    def active_weights(self):
+        """Backward compat: trả về T0 cho code cũ chưa migrate."""
+        return self.time_weights[0]
+
+    def _load_historical_baseline(self):
+        baseline_path = Path(__file__).parent.parent.parent / "data" / "edge_historical_baseline.pkl"
+        if baseline_path.exists():
+            with open(baseline_path, 'rb') as f:
+                self._edge_baseline = pickle.load(f)
+            logger.info(f"Loaded {len(self._edge_baseline):,} historical baseline records.")
+        else:
+            logger.warning("Historical baseline not found. Future predictions disabled.")
+
+    def _get_day_type(self, weekday):
+        if weekday in (0, 1, 2, 3): return 1
+        if weekday == 4: return 2
+        return 3
+
+    def _build_future_dict(self, day_type, time_slot):
+        """Xây 1 flat dict trọng số tương lai từ historical baseline."""
+        # Night mode -> trả về base_time, không cần tính toán
+        if time_slot >= NIGHT_START_SLOT or time_slot < NIGHT_END_SLOT:
+            return self._base_weights.copy()
+
+        result = self._base_weights.copy()
+        for (u, v, k), base_time in result.items():
+            speed = self._edge_baseline.get((u, v, day_type, time_slot))
+            if speed and speed > 0:
+                length_m = self.G[u][v][k].get('length', 0.0)
+                if isinstance(length_m, list):
+                    length_m = length_m[0]
+                try:
+                    length_m = float(length_m)
+                except Exception:
+                    continue
+                # ponytail: speed km/h -> travel time seconds, one-liner
+                result[(u, v, k)] = length_m / (speed / 3.6) + (
+                    15.0 if self.G.nodes[v].get('traffic_signals', False) else 0.0
+                )
+        return result
+
+    def refresh_future_weights(self):
+        """Rebuild T15/T30/T45 nếu time_slot thay đổi. Gọi bởi Crawler sau batch update."""
+        vn_now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
+        current_slot = vn_now.hour * 4 + vn_now.minute // 15
+
+        if current_slot == self._cached_slot:
+            return  # Chưa đổi khung 15 phút, bỏ qua
+
+        self._cached_slot = current_slot
+        dow = vn_now.weekday()
+
+        future_dicts = []
+        for offset in (1, 2, 3):  # +15, +30, +45 phút
+            future_slot = (current_slot + offset) % 96
+            future_dow = dow if (current_slot + offset) < 96 else (dow + 1) % 7
+            day_type = self._get_day_type(future_dow)
+            future_dicts.append(self._build_future_dict(day_type, future_slot))
+
+        self._future_dicts = tuple(future_dicts)
+        logger.info(f"Refreshed future weights for slot {current_slot}")
 
     def build_index(self, segment_lengths):
         """
@@ -51,8 +131,8 @@ class TrafficManager:
 
     def apply_traffic_penalty(self, segment_id: str, crawler_speed_kmh: float, spillover_alpha: float = 0.15):
         """
-        Crawler ghi vào bg_weights, sau đó swap pointer sang active_weights.
-        A* đọc active_weights mà không cần lock.
+        Crawler ghi vào bg_weights, sau đó swap tuple sang time_weights.
+        A* đọc time_weights mà không cần lock.
         """
         target_edges = self.segment_index.get(segment_id, [])
         if not target_edges:
@@ -89,8 +169,9 @@ class TrafficManager:
                             if current < new_weight:
                                 self.bg_weights[(node, neighbor, neighbor_k)] = new_weight
 
-        # Atomic pointer swap: GIL đảm bảo an toàn
-        self.active_weights = self.bg_weights.copy()
+        # Atomic tuple swap: GIL đảm bảo an toàn
+        self.refresh_future_weights()
+        self.time_weights = (self.bg_weights.copy(), *self._future_dicts)
 
     def batch_apply_traffic_penalty(self, traffic_data: list, spillover_alpha: float = 0.15):
         """
@@ -137,7 +218,8 @@ class TrafficManager:
                                     self.bg_weights[(node, neighbor, neighbor_k)] = new_weight
 
         # Swap MỘT LẦN duy nhất
-        self.active_weights = self.bg_weights.copy()
+        self.refresh_future_weights()
+        self.time_weights = (self.bg_weights.copy(), *self._future_dicts)
 
     def reset_traffic(self):
         """Reset toàn bộ về base_time"""
@@ -145,4 +227,6 @@ class TrafficManager:
             (u, v, k): data.get('base_time', 10.0)
             for u, v, k, data in self.G.edges(keys=True, data=True)
         }
-        self.active_weights = self.bg_weights.copy()
+        bw = self._base_weights
+        self._future_dicts = (bw.copy(), bw.copy(), bw.copy())
+        self.time_weights = (self.bg_weights.copy(), *self._future_dicts)
