@@ -56,7 +56,8 @@ Thư mục `scripts/` chứa các công cụ tiền xử lý và sinh artifacts.
 1. Xây dựng đồ thị định tuyến chính:
 
 ```bash
-python -m scripts/build_offline_graph.py
+python scripts/build_offline_graph.py
+# Nếu hệ thống báo là không tìm thấy path thì có thể chạy lệnh: python -m scripts.build_offline_graph
 ```
 Kết quả:
 - `data/hcmc_routing_brain_v1.pkl`
