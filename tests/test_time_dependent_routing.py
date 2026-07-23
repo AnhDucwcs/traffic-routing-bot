@@ -21,9 +21,9 @@ def mini_graph():
 @pytest.fixture(scope="module")
 def tm(mini_graph):
     """TrafficManager với đồ thị tí hon, không load baseline file."""
-    tm = TrafficManager(mini_graph, turn_penalties={})
+    tm = TrafficManager(mini_graph, turn_penalties={}, edge_historical_baseline={}, id_to_edge=[], model=None)
     # Giả lập historical baseline: edge (1,2) kẹt cứng ở slot 30 (7h30)
-    tm._edge_baseline = {
+    tm.edge_baseline = {
         (1, 2, 1, 30): 10.0,   # 10 km/h (kẹt xe)
         (1, 2, 1, 31): 12.0,   # 12 km/h (vẫn kẹt)
         (1, 2, 1, 32): 20.0,   # 20 km/h (đang giãn)

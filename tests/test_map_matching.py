@@ -21,7 +21,7 @@ def routing_components():
     strtree, edge_ids, geom_dict = load_feather_data(target_crs)
     map_matcher = MapMatcher(strtree, edge_ids, geom_dict)
     turn_penalties = load_turn_penalties()
-    traffic_manager = TrafficManager(graph, turn_penalties)
+    traffic_manager = TrafficManager(graph, turn_penalties, edge_historical_baseline={}, id_to_edge=[], model=None)
     print("[Fixture] Khởi tạo xong TrafficManager và MapMatcher!\n")
     
     return traffic_manager, map_matcher
@@ -40,7 +40,7 @@ async def test_tc1_wrong_lane_snap(routing_components):
     start_lat, start_lng = 10.773412004771103, 106.65734762465001
     end_lat, end_lng = 10.779339929656501, 106.65768521795057
     
-    path, distance_km, estimated_time_min, edge_times = await find_shortest_path(
+    path, distance_km, estimated_time_min, edge_times, *_ = await find_shortest_path(
         traffic_manager, map_matcher, start_lat, start_lng, end_lat, end_lng
     )
     
@@ -61,7 +61,7 @@ async def test_tc2_alley_snap(routing_components):
     start_lat, start_lng = 10.83518276625965, 106.67818138399366
     end_lat, end_lng = 10.83152785371064, 106.67757912322321
     
-    path, distance_km, estimated_time_min, edge_times = await find_shortest_path(
+    path, distance_km, estimated_time_min, edge_times, *_ = await find_shortest_path(
         traffic_manager, map_matcher, start_lat, start_lng, end_lat, end_lng
     )
     
@@ -80,7 +80,7 @@ async def test_tc3_mid_block_jump(routing_components):
     start_lat, start_lng = 10.81230367694846, 106.67473231235795
     end_lat, end_lng = 10.79302326849367, 106.67794476937286
     
-    path, distance_km, estimated_time_min, edge_times = await find_shortest_path(
+    path, distance_km, estimated_time_min, edge_times, *_ = await find_shortest_path(
         traffic_manager, map_matcher, start_lat, start_lng, end_lat, end_lng
     )
     

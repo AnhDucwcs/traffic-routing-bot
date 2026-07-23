@@ -9,14 +9,6 @@ from app.core.logger import logger
 WAYPOINT_ANGLE_THRESHOLD: float = 25.0
 
 
-def _get_transformers(graph):
-    graph_crs = graph.graph.get('crs')
-    if not graph_crs or str(graph_crs).upper() == 'EPSG:4326':
-        return None, None
-    to_graph = Transformer.from_crs('EPSG:4326', graph_crs, always_xy=True)
-    to_wgs84 = Transformer.from_crs(graph_crs, 'EPSG:4326', always_xy=True)
-    return to_graph, to_wgs84
-
 def calc_time_from_point_to_node(p: tuple, node_id: int, graph) -> float:
     """
     Tính thời gian đi từ một điểm P' (tọa độ UTM: x, y) tới một Node trong đồ thị.
@@ -108,7 +100,7 @@ def custom_astar_path(traffic_manager, start_edge: tuple, p_start: tuple, end_ed
     raise nx.NetworkXNoPath(f"Không tìm thấy đường từ {p_start} đến {p_end}")
 
 async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, start_lng: float, end_lat: float, end_lng: float):
-    to_graph, to_wgs84 = _get_transformers(traffic_manager.G)
+    to_graph, to_wgs84 = traffic_manager.to_graph, traffic_manager.to_wgs84
 
     if to_graph:
         start_x, start_y = to_graph.transform(start_lng, start_lat)

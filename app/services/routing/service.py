@@ -10,14 +10,14 @@ class RoutingService:
         if not path:
             return None
             
-        transformer_back = Transformer.from_crs(traffic_manager.G.graph['crs'], "EPSG:4326", always_xy=True)
+        _, to_wgs84 = traffic_manager.to_graph, traffic_manager.to_wgs84
         coordinates = []
         coordinates.append((start_lng, start_lat))
         # Lắp ráp từng đoạn cong (LineString) của các cạnh
         for i in range(len(path) - 1):
             u, v = path[i], path[i + 1]
             edges = traffic_manager.G[u][v]
-            best_key = min(edges.keys(), key=lambda k: edges[k].get('current_weight', float('inf')))
+            best_key = min(edges.keys(), key=lambda k: traffic_manager.active_weights.get((u, v, k), 10.0))
             line = geom_dict.get((u, v, best_key))
             
             if line:
@@ -32,15 +32,15 @@ class RoutingService:
                 if dist_to_end < dist_to_start:
                     coords = coords[::-1]
                 for x, y in coords:
-                    lng, lat = transformer_back.transform(x, y)
+                    lng, lat = to_wgs84.transform(x, y)
                     if not coordinates or coordinates[-1] != (lng, lat):
                         coordinates.append((lng, lat))
             else:
                 # Fallback vẽ đường thẳng nếu không tìm thấy geometry
                 u_x, u_y = traffic_manager.G.nodes[u]['x'], traffic_manager.G.nodes[u]['y']
                 v_x, v_y = traffic_manager.G.nodes[v]['x'], traffic_manager.G.nodes[v]['y']
-                lng_u, lat_u = transformer_back.transform(u_x, u_y)
-                lng_v, lat_v = transformer_back.transform(v_x, v_y)
+                lng_u, lat_u = to_wgs84.transform(u_x, u_y)
+                lng_v, lat_v = to_wgs84.transform(v_x, v_y)
                 if not coordinates or coordinates[-1] != (lng_u, lat_u):
                     coordinates.append((lng_u, lat_u))
                 if coordinates[-1] != (lng_v, lat_v):

@@ -81,18 +81,7 @@ class STGCNInference:
         ckpt = torch.load(self.pth_path, weights_only=False, map_location=torch.device('cpu'))
         self.model = STGCN(num_nodes=ckpt['num_nodes'])
         state_dict = ckpt['model_state_dict']
-        new_state_dict = {}
-        for k, v in state_dict.items():
-            # 1. Cạo bỏ lớp vỏ 'module.' do Kaggle để lại
-            if k.startswith('module.'):
-                k = k[7:]
-            # 2. Xóa biến edge_index rác do torch_geometric vô tình lưu vào
-            if k == 'edge_index':
-                continue
-            # 3. Ép tên biến gcn.bias của thư viện khớp với gcn.lin.bias của ta
-            k = k.replace('gcn.bias', 'gcn.lin.bias')
-            
-            new_state_dict[k] = v
+        new_state_dict = {k.removeprefix('module.').replace('gcn.bias', 'gcn.lin.bias'): v for k, v in state_dict.items() if k.removeprefix('module.') != 'edge_index'}
             
         self.model.load_state_dict(new_state_dict)
         self.train_mean = ckpt['train_mean']

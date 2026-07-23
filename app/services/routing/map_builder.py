@@ -4,13 +4,14 @@ import json
 from pathlib import Path
 from app.core.logger import logger
 
+SRC_DIR = Path(__file__).resolve().parent.parent.parent.parent
+
+
 def load_routing_graph():
     logger.info("Loading routing graph from disk...")
     start_time = time.perf_counter()
     
-    curent_dir = Path(__file__).resolve().parent
-    src_dir = curent_dir.parent.parent.parent
-    graph_path = src_dir / "data" / "hcmc_routing_brain_v2.pkl"
+    graph_path = SRC_DIR / "data" / "hcmc_routing_brain_v2.pkl"
     
     if not graph_path.exists():
         raise FileNotFoundError(f"Routing graph file not found at {graph_path}. Please run the build_offline_graph.py script first.")
@@ -26,9 +27,7 @@ def load_routing_graph():
 def load_segment_lengths():
     logger.info("Loading segment lengths from disk...")
     
-    curent_dir = Path(__file__).resolve().parent
-    src_dir = curent_dir.parent.parent.parent
-    lengths_path = src_dir / "data" / "segment_lengths_v2.json"
+    lengths_path = SRC_DIR / "data" / "segment_lengths_v2.json"
     
     with open(lengths_path, 'r', encoding='utf-8') as f:
             segment_lengths = json.load(f)
@@ -39,9 +38,7 @@ def load_segment_lengths():
 def load_route_stop_sequence():
     logger.info("Loading route stop sequence from disk...")
     
-    curent_dir = Path(__file__).resolve().parent
-    src_dir = curent_dir.parent.parent.parent
-    sequence_path = src_dir / "data" / "route_stop_sequence.json"
+    sequence_path = SRC_DIR / "data" / "route_stop_sequence.json"
     
     with open(sequence_path, 'r', encoding='utf-8') as f:
             route_stop_sequence = json.load(f)
@@ -52,9 +49,7 @@ def load_route_stop_sequence():
 def load_turn_penalties():
     logger.info("Loading turn penalties from disk...")
     
-    curent_dir = Path(__file__).resolve().parent
-    src_dir = curent_dir.parent.parent.parent
-    penalties_path = src_dir / "data" / "turn_penalties.pkl"
+    penalties_path = SRC_DIR / "data" / "turn_penalties.pkl"
     
     with open(penalties_path, 'rb') as f:
             turn_penalties = pickle.load(f)
@@ -65,9 +60,7 @@ def load_turn_penalties():
 def load_feather_data(target_crs):
     logger.info("Loading feather data from disk...")
     
-    curent_dir = Path(__file__).resolve().parent
-    src_dir = curent_dir.parent.parent.parent
-    feather_path = src_dir / "data" / "hcmc_geometry_store.feather"
+    feather_path = SRC_DIR / "data" / "hcmc_geometry_store.feather"
     
     if not feather_path.exists():
         raise FileNotFoundError(f"Feather data file not found at {feather_path}. Please run the build_offline_graph.py script first.")
@@ -96,9 +89,7 @@ def load_feather_data(target_crs):
     return strtree, edge_ids, geom_dict
 
 def load_historical_baseline():
-    curent_dir = Path(__file__).resolve().parent
-    src_dir = curent_dir.parent.parent.parent
-    baseline_path = src_dir / "data" / "edge_historical_baseline.pkl"
+    baseline_path = SRC_DIR / "data" / "edge_historical_baseline.pkl"
     edge_baseline = {}
     if baseline_path.exists():
         with open(baseline_path, 'rb') as f:
@@ -112,10 +103,8 @@ def load_historical_baseline():
 def load_edge_index():
     logger.info("Loading edge index from disk...")
     
-    curent_dir = Path(__file__).resolve().parent
-    src_dir = curent_dir.parent.parent.parent
-    index_path = src_dir / "data" / "edge_index.npy"
-    id_to_edge_path = src_dir / "data" / "id_to_edge.pkl"
+    index_path = SRC_DIR / "data" / "edge_index.npy"
+    id_to_edge_path = SRC_DIR / "data" / "id_to_edge.pkl"
     
     if not index_path.exists():
         logger.error(f"Edge index file not found at {index_path}.")
@@ -131,9 +120,7 @@ def load_edge_index():
 def load_stgcn_model(edge_index):
     logger.info("Loading STGCN model from disk...")
     
-    curent_dir = Path(__file__).resolve().parent
-    src_dir = curent_dir.parent.parent.parent
-    pth_path = src_dir / "data" / "stgcn_best.pth"
+    pth_path = SRC_DIR / "data" / "stgcn_best.pth"
     if not pth_path.exists():
         logger.error(f"STGCN model file not found at {pth_path}.")
         return None

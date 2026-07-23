@@ -76,7 +76,6 @@ async def lifespan(app: fastapi.FastAPI):
 
     del app.state.graph
     del app.state.traffic_manager
-    del app.state.route_stop_sequence
     del app.state.route_results
 
 app = fastapi.FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)

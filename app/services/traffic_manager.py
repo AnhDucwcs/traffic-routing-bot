@@ -1,13 +1,9 @@
 from collections import deque
-import json
-import pickle
 import pytz
 import numpy as np
-from tqdm import tqdm
-from pathlib import Path
 from datetime import datetime
 from app.core.logger import logger
-from app.ml.stgcn_inference import STGCNInference
+from pyproj import Transformer
 
 # ponytail: Night mode 21:30-05:30, A* fallback về base_time
 NIGHT_START_SLOT = 86   # 21*4 + 30//15
@@ -41,6 +37,17 @@ class TrafficManager:
         # time_weights: (T0, T15, T30, T45) - Atomic swap via GIL
         self.time_weights = (self._base_weights.copy(), *self._future_dicts)
 
+        #
+        self.to_graph, self.to_wgs84 = self._get_transformers()
+
+    def _get_transformers(self):
+        graph_crs = self.G.graph.get('crs')
+        if not graph_crs or str(graph_crs).upper() == 'EPSG:4326':
+            return None, None
+        to_graph = Transformer.from_crs('EPSG:4326', graph_crs, always_xy=True)
+        to_wgs84 = Transformer.from_crs(graph_crs, 'EPSG:4326', always_xy=True)
+        return to_graph, to_wgs84
+
     @property
     def active_weights(self):
         """Backward compat: trả về T0 cho code cũ chưa migrate."""
@@ -50,6 +57,15 @@ class TrafficManager:
         if weekday in (0, 1, 2, 3): return 1
         if weekday == 4: return 2
         return 3
+    
+    def _get_length(self,u, v, k):
+        length_m = self.G[u][v][k].get('length', 0.0)
+        if isinstance(length_m, list):
+            length_m = length_m[0]
+        try:
+            return float(length_m)
+        except Exception:
+            return 0.0
 
     def _build_future_dict(self, day_type, time_slot):
         """Xây 1 flat dict trọng số tương lai từ historical baseline."""
@@ -61,13 +77,7 @@ class TrafficManager:
         for (u, v, k), base_time in result.items():
             speed = self.edge_baseline.get((u, v, day_type, time_slot))
             if speed and speed > 0:
-                length_m = self.G[u][v][k].get('length', 0.0)
-                if isinstance(length_m, list):
-                    length_m = length_m[0]
-                try:
-                    length_m = float(length_m)
-                except Exception:
-                    continue
+                length_m = self._get_length(u, v, k)
                 result[(u, v, k)] = length_m / (speed / 3.6) + (
                     15.0 if self.G.nodes[v].get('traffic_signals', False) else 0.0
                 )
@@ -79,14 +89,7 @@ class TrafficManager:
         for i in range(N):
             u, v, k = self.id_to_edge[i]
             base_time = self.G[u][v][k].get('base_time', 10.0)
-            length_m = self.G[u][v][k].get('length', 0.0)
-            if isinstance(length_m, list):
-                length_m = length_m[0]
-            try:
-                length_m = float(length_m)
-            except Exception:
-                current_speeds[i] = 0.0
-                continue
+            length_m = self._get_length(u, v, k)
             current_time = self.bg_weights.get((u, v, k), base_time)
             speed_kmh = (length_m / current_time) * 3.6 if current_time > 0 else 0.0
             current_speeds[i] = speed_kmh
@@ -98,9 +101,7 @@ class TrafficManager:
             logger.warning("Not enough historical data for prediction. Using base weights.")
             return None
         
-        stacked_input = np.stack(self.history_buffer, axis=-1)  # (N, 1, 4)
-        N = stacked_input.shape[0]
-        stacked_input = stacked_input.reshape(1, N, 1, 4)
+        stacked_input = np.stack(self.history_buffer, axis=-1)[None, :, None, :]
         
         predicted_output = self.ai_engine.predict(stacked_input)  # (1, N, horizon)
         
@@ -127,19 +128,9 @@ class TrafficManager:
             dict_45 = self._base_weights.copy()
             for i in range(N):
                 u, v, k = self.id_to_edge[i]
-                speed_15 = future_predictions[0, i, 0]
-                speed_30 = future_predictions[0, i, 1]
-                speed_45 = future_predictions[0, i, 2]
-                for speed, target_dict in zip((speed_15, speed_30, speed_45), (dict_15, dict_30, dict_45)):
+                for speed, target_dict in zip((future_predictions[0, i]), (dict_15, dict_30, dict_45)):
                     if speed > 0:
-                        length_m = self.G[u][v][k].get('length', 0.0)
-                        if isinstance(length_m, list):
-                            length_m = length_m[0]
-                        try:
-                            length_m = float(length_m)
-                        except Exception:
-                            future_dicts.append(self._base_weights.get((u, v, k), 10.0))
-                            continue
+                        length_m = self._get_length(u, v, k)
                         travel_time = length_m / (speed / 3.6) + (
                             15.0 if self.G.nodes[v].get('traffic_signals', False) else 0.0
                         )
@@ -184,53 +175,8 @@ class TrafficManager:
                             edges_list.append((v, u, k))
 
             self.segment_index[segment_id] = edges_list
-
-                
+       
         logger.info(f"Traffic Index được xây dựng với {len(self.segment_index)} bus segments.")
-
-    def apply_traffic_penalty(self, segment_id: str, crawler_speed_kmh: float, spillover_alpha: float = 0.15):
-        """
-        Crawler ghi vào bg_weights, sau đó swap tuple sang time_weights.
-        A* đọc time_weights mà không cần lock.
-        """
-        target_edges = self.segment_index.get(segment_id, [])
-        if not target_edges:
-            logger.warning(f"[TrafficManager] Không tìm thấy Cạnh nào khớp với segment_id: {segment_id}")
-            return
-
-        for u, v, k in target_edges:
-            edge_data = self.G[u][v][k]
-            base_time = edge_data.get('base_time', 10.0)
-            base_speed_kmh = edge_data.get('speed_kmh', 25.0)
-            if crawler_speed_kmh <= base_speed_kmh:
-                penalty_factor = base_speed_kmh / crawler_speed_kmh
-            else:
-                penalty_factor = 1.0
-            penalty_factor = min(penalty_factor, 10.0)
-            self.bg_weights[(u, v, k)] = base_time * penalty_factor
-
-            # Hiệu ứng tràn (Spillover) vào hẻm
-            if penalty_factor > 1.0:
-                spillover_penalty = 1 + (penalty_factor - 1) * spillover_alpha
-            else:
-                spillover_penalty = 1.0
-            
-            for node in (u, v):
-                for neighbor in self.G.successors(node):
-                    if neighbor in (u, v): 
-                        continue
-                    for neighbor_k in self.G[node][neighbor]:
-                        neighbor_edge = self.G[node][neighbor][neighbor_k]
-                        if not neighbor_edge.get('is_bus_route', False):
-                            neighbor_base = neighbor_edge.get('base_time', 10.0)
-                            new_weight = neighbor_base * spillover_penalty
-                            current = self.bg_weights.get((node, neighbor, neighbor_k), neighbor_base)
-                            if current < new_weight:
-                                self.bg_weights[(node, neighbor, neighbor_k)] = new_weight
-
-        # Atomic tuple swap: GIL đảm bảo an toàn
-        self.refresh_future_weights()
-        self.time_weights = (self.bg_weights.copy(), *self._future_dicts)
 
     def batch_apply_traffic_penalty(self, traffic_data: list, spillover_alpha: float = 0.15):
         """

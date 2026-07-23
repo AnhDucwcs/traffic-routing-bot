@@ -59,15 +59,10 @@ class HotStorageManager:
             speed_kmh = item.get("speed_kmh", 0.0)
             
             # Đồng nhất kiểu dữ liệu datetime object cho TTL Index
-            timestamp_str = item.get("timestamp")
+            ts = item.get("timestamp")
             try:
-                if isinstance(timestamp_str, str):
-                    dt_obj = datetime.fromisoformat(timestamp_str)
-                elif isinstance(timestamp_str, datetime):
-                    dt_obj = timestamp_str
-                else:
-                    dt_obj = datetime.now(pytz.UTC)
-            except Exception:
+                dt_obj = ts if isinstance(ts, datetime) else datetime.fromisoformat(str(ts))
+            except ValueError:
                 dt_obj = datetime.now(pytz.UTC)
 
             filter_query = {
