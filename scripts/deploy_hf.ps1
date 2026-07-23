@@ -15,6 +15,9 @@ git add -f data\hcmc_geometry_store.feather
 git add -f data\master_stops.json
 git add -f data\route_stop_sequence.json
 git add -f data\segment_lengths_v2.json
+git add -f data\edge_index.npy
+git add -f data\id_to_edge.pkl
+git add -f data\stgcn_best.pth
 
 git commit -m "Deploy to HuggingFace"
 

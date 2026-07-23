@@ -94,3 +94,36 @@ def load_feather_data(target_crs):
     
     logger.info("STRtree built and feather data loaded.")
     return strtree, edge_ids, geom_dict
+
+def load_edge_index():
+    logger.info("Loading edge index from disk...")
+    
+    curent_dir = Path(__file__).resolve().parent
+    src_dir = curent_dir.parent.parent.parent
+    index_path = src_dir / "data" / "edge_index.npy"
+    id_to_edge_path = src_dir / "data" / "id_to_edge.pkl"
+    
+    if not index_path.exists():
+        logger.error(f"Edge index file not found at {index_path}.")
+        return None
+    
+    import numpy as np
+    edge_index = np.load(index_path)
+    logger.info(f"Edge index loaded with shape {edge_index.shape}.")
+    with open(id_to_edge_path, 'rb') as f:
+        id_to_edge = pickle.load(f)
+    return id_to_edge, edge_index
+
+def load_stgcn_model(edge_index):
+    logger.info("Loading STGCN model from disk...")
+    
+    pth_path = Path(__file__).parent.parent.parent / "data" / "stgcn_best.pth"
+    if not pth_path.exists():
+        logger.error(f"STGCN model file not found at {pth_path}.")
+        return None
+    
+    from app.ml.stgcn_inference import STGCNInference
+    stgcn_inference = STGCNInference(pth_path, edge_index)
+    
+    logger.info("STGCN model loaded.")
+    return stgcn_inference

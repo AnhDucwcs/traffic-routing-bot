@@ -1,19 +1,27 @@
+from collections import deque
 import json
 import pickle
 import pytz
+import numpy as np
+from tqdm import tqdm
 from pathlib import Path
 from datetime import datetime
 from app.core.logger import logger
+from app.ml.stgcn_inference import STGCNInference
 
 # ponytail: Night mode 21:30-05:30, A* fallback về base_time
 NIGHT_START_SLOT = 86   # 21*4 + 30//15
 NIGHT_END_SLOT = 22     # 5*4 + 30//15
 
 class TrafficManager:
-    def __init__(self, routing_graph, turn_penalties):
+    def __init__(self, routing_graph, turn_penalties, model):
         self.G = routing_graph
         self.turn_penalties = turn_penalties
         self.segment_index = {}
+        
+        # load ai engine
+        self.ai_engine = model
+        self.history_buffer = deque(maxlen=4)
         
         # Base weights (bất biến, dùng làm fallback)
         self._base_weights = {
@@ -69,11 +77,23 @@ class TrafficManager:
                     length_m = float(length_m)
                 except Exception:
                     continue
-                # ponytail: speed km/h -> travel time seconds, one-liner
                 result[(u, v, k)] = length_m / (speed / 3.6) + (
                     15.0 if self.G.nodes[v].get('traffic_signals', False) else 0.0
                 )
         return result
+    
+    def _predict_future_weights(self):
+        if len(self.history_buffer) < 4:
+            logger.warning("Not enough historical data for prediction. Using base weights.")
+            return None
+        
+        stacked_input = np.stack(self.history_buffer, axis=-1)  # (N, 1, 4)
+        N = stacked_input.shape[0]
+        stacked_input = stacked_input.reshape(1, N, 1, 4)
+        
+        predicted_output = self.ai_engine.predict(stacked_input)  # (1, N, horizon)
+        
+        return predicted_output
 
     def refresh_future_weights(self):
         """Rebuild T15/T30/T45 nếu time_slot thay đổi. Gọi bởi Crawler sau batch update."""
