@@ -78,9 +78,23 @@ class STGCNInference:
         self.pth_path = pth_path
         self.edge_index = edge_index
         self.A_hat = self.build_a_hat(edge_index, num_nodes=edge_index.max().item() + 1)
-        ckpt = torch.load(self.pth_path, weights_only=False)
+        ckpt = torch.load(self.pth_path, weights_only=False, map_location=torch.device('cpu'))
         self.model = STGCN(num_nodes=ckpt['num_nodes'])
-        self.model.load_state_dict(ckpt['model_state_dict'])
+        state_dict = ckpt['model_state_dict']
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            # 1. Cạo bỏ lớp vỏ 'module.' do Kaggle để lại
+            if k.startswith('module.'):
+                k = k[7:]
+            # 2. Xóa biến edge_index rác do torch_geometric vô tình lưu vào
+            if k == 'edge_index':
+                continue
+            # 3. Ép tên biến gcn.bias của thư viện khớp với gcn.lin.bias của ta
+            k = k.replace('gcn.bias', 'gcn.lin.bias')
+            
+            new_state_dict[k] = v
+            
+        self.model.load_state_dict(new_state_dict)
         self.train_mean = ckpt['train_mean']
         self.train_std = ckpt['train_std']
         total_params = sum(p.numel() for p in self.model.parameters())
@@ -101,6 +115,8 @@ class STGCNInference:
     def build_a_hat(self, edge_index, num_nodes):
         # Bước 1: Tạo self-loops (Danh sách các cạnh tự nối từ node 0->0, 1->1, ...)
         self_loops = torch.arange(end = num_nodes).unsqueeze(0).repeat(2, 1)  # (2, N)
+        if isinstance(edge_index, np.ndarray):
+            edge_index = torch.tensor(edge_index, dtype=torch.long)
         edge_index_with_loops = torch.cat([edge_index, self_loops], dim=1)
         
         # Bước 2: Tính Degree (Bậc) của mỗi node

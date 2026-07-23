@@ -116,14 +116,41 @@ class TrafficManager:
 
         self._cached_slot = current_slot
         self._extract_current_speeds_to_buffer()
+        future_predictions = self._predict_future_weights()
         dow = vn_now.weekday()
 
         future_dicts = []
-        for offset in (1, 2, 3):  # +15, +30, +45 phút
-            future_slot = (current_slot + offset) % 96
-            future_dow = dow if (current_slot + offset) < 96 else (dow + 1) % 7
-            day_type = self._get_day_type(future_dow)
-            future_dicts.append(self._build_future_dict(day_type, future_slot))
+        if future_predictions is not None:
+            N = len(self.id_to_edge)
+            dict_15 = self._base_weights.copy()
+            dict_30 = self._base_weights.copy()
+            dict_45 = self._base_weights.copy()
+            for i in range(N):
+                u, v, k = self.id_to_edge[i]
+                speed_15 = future_predictions[0, i, 0]
+                speed_30 = future_predictions[0, i, 1]
+                speed_45 = future_predictions[0, i, 2]
+                for speed, target_dict in zip((speed_15, speed_30, speed_45), (dict_15, dict_30, dict_45)):
+                    if speed > 0:
+                        length_m = self.G[u][v][k].get('length', 0.0)
+                        if isinstance(length_m, list):
+                            length_m = length_m[0]
+                        try:
+                            length_m = float(length_m)
+                        except Exception:
+                            future_dicts.append(self._base_weights.get((u, v, k), 10.0))
+                            continue
+                        travel_time = length_m / (speed / 3.6) + (
+                            15.0 if self.G.nodes[v].get('traffic_signals', False) else 0.0
+                        )
+                        target_dict[(u, v, k)] = travel_time
+            future_dicts = [dict_15, dict_30, dict_45]
+        else:
+            for offset in (1, 2, 3):  # +15, +30, +45 phút
+                future_slot = (current_slot + offset) % 96
+                future_dow = dow if (current_slot + offset) < 96 else (dow + 1) % 7
+                day_type = self._get_day_type(future_dow)
+                future_dicts.append(self._build_future_dict(day_type, future_slot))
 
         self._future_dicts = tuple(future_dicts)
         logger.info(f"Refreshed future weights for slot {current_slot}")

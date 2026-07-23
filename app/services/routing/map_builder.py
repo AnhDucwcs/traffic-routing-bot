@@ -96,7 +96,10 @@ def load_feather_data(target_crs):
     return strtree, edge_ids, geom_dict
 
 def load_historical_baseline():
-    baseline_path = Path(__file__).parent.parent.parent / "data" / "edge_historical_baseline.pkl"
+    curent_dir = Path(__file__).resolve().parent
+    src_dir = curent_dir.parent.parent.parent
+    baseline_path = src_dir / "data" / "edge_historical_baseline.pkl"
+    edge_baseline = {}
     if baseline_path.exists():
         with open(baseline_path, 'rb') as f:
             edge_baseline = pickle.load(f)
@@ -128,7 +131,9 @@ def load_edge_index():
 def load_stgcn_model(edge_index):
     logger.info("Loading STGCN model from disk...")
     
-    pth_path = Path(__file__).parent.parent.parent / "data" / "stgcn_best.pth"
+    curent_dir = Path(__file__).resolve().parent
+    src_dir = curent_dir.parent.parent.parent
+    pth_path = src_dir / "data" / "stgcn_best.pth"
     if not pth_path.exists():
         logger.error(f"STGCN model file not found at {pth_path}.")
         return None
