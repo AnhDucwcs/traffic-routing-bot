@@ -29,19 +29,17 @@ class STGCNBlock(nn.Module):
         self.residual = nn.Conv2d(in_ch, out_ch, (1, 1)) if in_ch != out_ch else nn.Identity()
 
     def _batched_gcn(self, x, A_hat):
-        """GCN batched over B, sequential over T (chỉ 4 vòng lặp)."""
-        B, N, C, T = x.size()
-        offsets = torch.arange(B, device=x.device) * N                 # (B,)
-
+        # x luôn có dạng: (1, N, C, T)
         outs = []
-        for t in range(T):
-            x_t = x[:, :, :, t].reshape(B * N, C)     # (B*N, C)
-            out_t = F.relu(self.gcn(x_t, A_hat))    # (B*N, C)
-            outs.append(out_t.reshape(B, N, C))
-        return torch.stack(outs, dim=-1)                # (B, N, C, T)
+        for t in range(x.size(3)): # Quét 4 khung giờ
+            # Lấy thẳng lõi x[0, :, :, t] có dạng (N, C) đưa vào GCN
+            out_t = F.relu(self.gcn(x[0, :, :, t], A_hat)) 
+            outs.append(out_t)
+        # Stack lại ra (N, C, T), sau đó unsqueeze(0) để trả lại (1, N, C, T)
+        return torch.stack(outs, dim=-1).unsqueeze(0)
 
     def forward(self, x, A_hat):
-        # x: (B, N, C_in, T)
+        # x: (Batch, Node, Channel, Time)
         res = self.residual(x.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
 
         # Temporal Conv 1
