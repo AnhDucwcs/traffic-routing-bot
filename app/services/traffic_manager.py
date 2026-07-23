@@ -14,14 +14,15 @@ NIGHT_START_SLOT = 86   # 21*4 + 30//15
 NIGHT_END_SLOT = 22     # 5*4 + 30//15
 
 class TrafficManager:
-    def __init__(self, routing_graph, turn_penalties, model):
+    def __init__(self, routing_graph, turn_penalties, edge_historical_baseline, id_to_edge, model):
         self.G = routing_graph
         self.turn_penalties = turn_penalties
         self.segment_index = {}
-        
+
         # load ai engine
         self.ai_engine = model
         self.history_buffer = deque(maxlen=4)
+        self.id_to_edge = id_to_edge
         
         # Base weights (bất biến, dùng làm fallback)
         self._base_weights = {
@@ -31,8 +32,7 @@ class TrafficManager:
         self.bg_weights = self._base_weights.copy()
 
         # Load historical baseline cho T15/T30/T45
-        self._edge_baseline = {}
-        self._load_historical_baseline()
+        self.edge_baseline = edge_historical_baseline
 
         # Cache slot để tránh rebuild khi chưa đổi khung 15 phút
         self._cached_slot = -1
@@ -45,15 +45,6 @@ class TrafficManager:
     def active_weights(self):
         """Backward compat: trả về T0 cho code cũ chưa migrate."""
         return self.time_weights[0]
-
-    def _load_historical_baseline(self):
-        baseline_path = Path(__file__).parent.parent.parent / "data" / "edge_historical_baseline.pkl"
-        if baseline_path.exists():
-            with open(baseline_path, 'rb') as f:
-                self._edge_baseline = pickle.load(f)
-            logger.info(f"Loaded {len(self._edge_baseline):,} historical baseline records.")
-        else:
-            logger.warning("Historical baseline not found. Future predictions disabled.")
 
     def _get_day_type(self, weekday):
         if weekday in (0, 1, 2, 3): return 1
@@ -68,7 +59,7 @@ class TrafficManager:
 
         result = self._base_weights.copy()
         for (u, v, k), base_time in result.items():
-            speed = self._edge_baseline.get((u, v, day_type, time_slot))
+            speed = self.edge_baseline.get((u, v, day_type, time_slot))
             if speed and speed > 0:
                 length_m = self.G[u][v][k].get('length', 0.0)
                 if isinstance(length_m, list):
@@ -82,6 +73,26 @@ class TrafficManager:
                 )
         return result
     
+    def _extract_current_speeds_to_buffer(self):
+        N = len(self.id_to_edge)
+        current_speeds = np.zeros(N, dtype=np.float32)
+        for i in range(N):
+            u, v, k = self.id_to_edge[i]
+            base_time = self.G[u][v][k].get('base_time', 10.0)
+            length_m = self.G[u][v][k].get('length', 0.0)
+            if isinstance(length_m, list):
+                length_m = length_m[0]
+            try:
+                length_m = float(length_m)
+            except Exception:
+                current_speeds[i] = 0.0
+                continue
+            current_time = self.bg_weights.get((u, v, k), base_time)
+            speed_kmh = (length_m / current_time) * 3.6 if current_time > 0 else 0.0
+            current_speeds[i] = speed_kmh
+        
+        self.history_buffer.append(current_speeds)
+
     def _predict_future_weights(self):
         if len(self.history_buffer) < 4:
             logger.warning("Not enough historical data for prediction. Using base weights.")
@@ -104,6 +115,7 @@ class TrafficManager:
             return  # Chưa đổi khung 15 phút, bỏ qua
 
         self._cached_slot = current_slot
+        self._extract_current_speeds_to_buffer()
         dow = vn_now.weekday()
 
         future_dicts = []

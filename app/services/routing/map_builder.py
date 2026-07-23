@@ -95,6 +95,17 @@ def load_feather_data(target_crs):
     logger.info("STRtree built and feather data loaded.")
     return strtree, edge_ids, geom_dict
 
+def load_historical_baseline():
+    baseline_path = Path(__file__).parent.parent.parent / "data" / "edge_historical_baseline.pkl"
+    if baseline_path.exists():
+        with open(baseline_path, 'rb') as f:
+            edge_baseline = pickle.load(f)
+        logger.info(f"Loaded {len(edge_baseline):,} historical baseline records.")
+    else:
+        logger.warning("Historical baseline not found. Future predictions disabled.")
+
+    return edge_baseline
+
 def load_edge_index():
     logger.info("Loading edge index from disk...")
     

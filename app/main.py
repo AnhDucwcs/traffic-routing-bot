@@ -11,7 +11,7 @@ from app.core.logger import setup_logging
 from app.services.routing.map_builder import load_routing_graph, load_segment_lengths
 from app.services.routing.map_builder import load_route_stop_sequence, load_turn_penalties
 from app.services.routing.map_builder import load_feather_data, load_edge_index
-from app.services.routing.map_builder import load_stgcn_model
+from app.services.routing.map_builder import load_stgcn_model, load_historical_baseline
 from app.services.crawler.bus_crawler import BusCrawler
 from app.services.crawler.scheduler import CrawlerScheduler
 from app.services.routing.map_matching import MapMatcher
@@ -36,9 +36,10 @@ async def lifespan(app: fastapi.FastAPI):
     strtree, edge_ids, app.state.geom_dict = load_feather_data(target_crs)
     app.state.map_matcher = MapMatcher(strtree, edge_ids, app.state.geom_dict)
     turn_penalties = load_turn_penalties()
+    edge_historical_baseline = load_historical_baseline()
     id_to_edge, edge_index = load_edge_index()
     model = load_stgcn_model(edge_index)
-    app.state.traffic_manager = TrafficManager(app.state.graph, turn_penalties, model)
+    app.state.traffic_manager = TrafficManager(app.state.graph, turn_penalties, edge_historical_baseline, id_to_edge, model)
     app.state.route_results = TTLCache(maxsize=1000, ttl=300)  
     app.state.hot_storage = HotStorageManager()
     app.state.cold_storage = ColdStorageManager(sync_interval_minutes=60)
