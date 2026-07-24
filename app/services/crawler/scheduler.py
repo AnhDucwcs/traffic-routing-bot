@@ -13,8 +13,8 @@ class CrawlerScheduler:
         self._task = None
         self._stopped = asyncio.Event()
         
-    def _update_hot_db(self, traffic_data):
-        self.traffic_manager.batch_apply_traffic_penalty(traffic_data)
+    async def _update_hot_db(self, traffic_data):
+        await asyncio.to_thread(self.traffic_manager.batch_apply_traffic_penalty, traffic_data)
     
     async def hydrate_ram(self):
         """Phục hồi dữ liệu kẹt xe từ MongoDB lên RAM khi khởi động"""
@@ -22,7 +22,7 @@ class CrawlerScheduler:
             self.traffic_manager.reset_traffic()
             hot_data = await self.hot_storage.get_active_traffic_data()
             if hot_data:
-                self._update_hot_db(hot_data)
+                await self._update_hot_db(hot_data)
                 logger.info(f"State Hydration: Đã phục hồi thần tốc {len(hot_data)} đoạn đường kẹt xe từ MongoDB vào RAM!")
             else:
                 logger.info("Database trống, chờ đợt crawl đầu tiên...")
@@ -58,7 +58,7 @@ class CrawlerScheduler:
                         self.traffic_manager.reset_traffic()
                         active_hot_data = await self.hot_storage.get_active_traffic_data()
                         if active_hot_data:
-                            self._update_hot_db(active_hot_data)
+                            await self._update_hot_db(active_hot_data)
                             logger.info(f"State Sync: Đã đồng bộ {len(active_hot_data)} đoạn đường kẹt xe từ MongoDB vào RAM!")
                         else:
                             logger.info("Tất cả dữ liệu đã hết hạn TTL, RAM đã được làm sạch.")
