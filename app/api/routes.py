@@ -4,7 +4,6 @@ from fastapi import BackgroundTasks, Header, HTTPException
 import httpx
 import time
 import uuid
-from urllib.parse import urlparse
 from app.models.schemas import RoutingRequest
 from app.services.response_helper import create_success_response, create_error_response
 from app.core.config import settings
@@ -14,13 +13,7 @@ from app.core.logger import logger
 router = APIRouter()
 
 
-def _validate_callback_url(callback_url: str | None):
-    if not callback_url:
-        raise HTTPException(status_code=400, detail="Thiếu callbackUrl")
 
-    parsed = urlparse(callback_url)
-    if parsed.scheme != "https" or not parsed.netloc:
-        raise HTTPException(status_code=400, detail="callbackUrl không hợp lệ")
 
 @router.get("/")
 async def root():
@@ -73,15 +66,23 @@ async def process_routing_background(payload: RoutingRequest, app_state):
 
     response_payload = data.model_dump()
  
-    if not payload.callback_url:
-        logger.error(f"Bỏ qua callback do thiếu URL cho conversation: {payload.conversation_id}")
+    if payload.platform == "telegram":
+        callback_url = settings.TELEGRAM_BOT_CALLBACK_URL
+    elif payload.platform == "java_app":
+        callback_url = settings.JAVA_APP_CALLBACK_URL
+    else:
+        logger.error(f"Platform không hợp lệ: {payload.platform}")
+        return
+
+    if not callback_url:
+        logger.error(f"Bỏ qua callback do thiếu URL cấu hình cho platform {payload.platform}, conversation: {payload.conversation_id}")
         return
 
     async with httpx.AsyncClient() as client:
         try:
             headers = {"x-internal-api-key": settings.INTERNAL_API_KEY}
-            await client.post(payload.callback_url, json=response_payload, headers=headers, timeout=10.0)
-            logger.info(f"Đã trả kết quả về Callback: {payload.callback_url}")
+            await client.post(callback_url, json=response_payload, headers=headers, timeout=10.0)
+            logger.info(f"Đã trả kết quả về Callback: {callback_url}")
         except Exception as e:
             logger.error(f"Lỗi khi gọi Callback: {e}")
 
@@ -94,8 +95,6 @@ async def routing_endpoint(
 ):
     if x_internal_api_key != settings.INTERNAL_API_KEY:
         raise HTTPException(status_code=403, detail="Từ chối truy cập: Sai API Key")
-
-    _validate_callback_url(payload.callback_url)
         
     background_tasks.add_task(process_routing_background, payload, request.app.state)
     

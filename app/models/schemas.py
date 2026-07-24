@@ -11,7 +11,6 @@ class RoutingRequest(BaseModel):
     user_id: str = Field(..., alias="userId", description="ID người dùng")
     conversation_id: str = Field(..., alias="conversationId")
     platform: Literal["telegram", "java_app"] = Field(..., description="Nền tảng gửi yêu cầu")
-    callback_url: str | None = Field(None, alias="callbackUrl")
     origin: Location
     destination: Location
     
