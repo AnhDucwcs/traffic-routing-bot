@@ -1,5 +1,10 @@
 $CurrentBranch = git branch --show-current
 
+Write-Host "Đang sao lưu thư mục data/ chống mất mát..."
+if (Test-Path ".data_backup") { Remove-Item -Recurse -Force ".data_backup" }
+New-Item -ItemType Directory -Force -Path ".data_backup" | Out-Null
+Copy-Item -Path "data\*" -Destination ".data_backup" -Recurse
+
 git branch -D hf-temp 2>$null
 
 git checkout --orphan hf-temp
@@ -24,5 +29,9 @@ git commit -m "Deploy to HuggingFace"
 git push hf hf-temp:main --force
 
 git checkout $CurrentBranch
+
+Write-Host "Đang phục hồi lại thư mục data/ từ bản sao lưu..."
+Copy-Item -Path ".data_backup\*" -Destination "data" -Recurse -Force
+Remove-Item -Recurse -Force ".data_backup"
 
 git branch -D hf-temp
