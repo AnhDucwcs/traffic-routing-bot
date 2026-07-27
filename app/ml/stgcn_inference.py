@@ -74,14 +74,16 @@ class STGCN(nn.Module):
         
 
 class STGCNInference:
-    def __init__(self, pth_path, edge_index):
+    def __init__(self, pth_path, edge_index, edge_weight):
         self.pth_path = pth_path
         self.edge_index = edge_index
-        self.A_hat = self.build_a_hat(edge_index, num_nodes=edge_index.max().item() + 1)
+        self.edge_weight = edge_weight
         ckpt = torch.load(self.pth_path, weights_only=False, map_location=torch.device('cpu'))
-        self.model = STGCN(num_nodes=ckpt['num_nodes'])
+        num_nodes = ckpt['num_nodes']
+        self.A_hat = self.build_a_hat(edge_index, edge_weight, num_nodes=num_nodes)
+        self.model = STGCN(num_nodes=num_nodes)
         state_dict = ckpt['model_state_dict']
-        new_state_dict = {k.removeprefix('module.').replace('gcn.bias', 'gcn.lin.bias'): v for k, v in state_dict.items() if k.removeprefix('module.') != 'edge_index'}
+        new_state_dict = {k.removeprefix('module.').replace('gcn.bias', 'gcn.lin.bias'): v for k, v in state_dict.items() if k.removeprefix('module.') not in ('edge_index', 'edge_weight')}
             
         self.model.load_state_dict(new_state_dict)
         self.train_mean = ckpt['train_mean']
@@ -101,23 +103,24 @@ class STGCNInference:
             output = torch.clamp(output, min=5.0, max=100.0)
         return output.numpy()
     
-    def build_a_hat(self, edge_index, num_nodes):
-        # Bước 1: Tạo self-loops (Danh sách các cạnh tự nối từ node 0->0, 1->1, ...)
-        self_loops = torch.arange(end = num_nodes).unsqueeze(0).repeat(2, 1)  # (2, N)
+    def build_a_hat(self, edge_index, edge_weight, num_nodes):
+        self_loops = torch.arange(end=num_nodes).unsqueeze(0).repeat(2, 1)
+        self_weights = torch.ones(num_nodes, dtype=torch.float32)
+        
         if isinstance(edge_index, np.ndarray):
             edge_index = torch.tensor(edge_index, dtype=torch.long)
+        if isinstance(edge_weight, np.ndarray):
+            edge_weight = torch.tensor(edge_weight, dtype=torch.float32)
+            
         edge_index_with_loops = torch.cat([edge_index, self_loops], dim=1)
+        edge_weights_with_loops = torch.cat([edge_weight, self_weights], dim=0)
         
-        # Bước 2: Tính Degree (Bậc) của mỗi node
-        deg = torch.zeros(num_nodes, dtype=torch.float32)
-        deg = torch.bincount(edge_index_with_loops[0], minlength=num_nodes).float()
-        
-        # Bước 3: Tính hệ số chuẩn hóa (deg_inv_sqrt)
+        # Bậc = tổng trọng số
+        deg = torch.bincount(edge_index_with_loops[0], weights=edge_weights_with_loops, minlength=num_nodes).float()
         deg_inv_sqrt = 1.0 / torch.sqrt(deg)
         deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0.0
         
-        # Bước 4: Gắn trọng số cho từng cạnh
-        weights = deg_inv_sqrt[edge_index_with_loops[0]] * deg_inv_sqrt[edge_index_with_loops[1]]
+        # Normalization: D^{-1/2} A D^{-1/2}
+        norm_weights = deg_inv_sqrt[edge_index_with_loops[0]] * edge_weights_with_loops * deg_inv_sqrt[edge_index_with_loops[1]]
         
-        # Bước 5: Đóng gói thành Ma trận Thưa (Sparse Tensor)
-        return torch.sparse_coo_tensor(edge_index_with_loops, weights, size=(num_nodes, num_nodes)).coalesce()
+        return torch.sparse_coo_tensor(edge_index_with_loops, norm_weights, size=(num_nodes, num_nodes)).coalesce()

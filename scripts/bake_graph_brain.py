@@ -31,9 +31,11 @@ def bake_graph_brain():
         elif hw in ['tertiary', 'tertiary_link']:
             speed_kmh = 35.0
         elif hw in ['residential', 'unclassified']:
-            speed_kmh = 30.0
-        elif hw in ['service', 'living_street']:
+            speed_kmh = 25.0
+        elif hw in ['service']:
             speed_kmh = 20.0
+        elif hw in ['living_street']:
+            speed_kmh = 15.0
         else:
             speed_kmh = 15.0
 
@@ -111,20 +113,15 @@ def calc_turn_penalty(graph, prev_node, current_node, next_node):
     if len(forward_options) <= 1:
         return 0.0 
 
-    # 2. XÁC ĐỊNH ĐỊA HÌNH: Đang ở hẻm hay đại lộ?
+    # 2. XÁC ĐỊNH TỐC ĐỘ: Đường lớn hay hẻm nhỏ?
     try: 
-        # Lấy loại đường của mép rẽ tiếp theo
+        # Lấy tốc độ của mép rẽ tiếp theo
         edge_data = graph[current_node][next_node]
         first_key = list(edge_data.keys())[0]
-        hw = edge_data[first_key].get('highway', 'unclassified')
-        if isinstance(hw, list): 
-            hw = hw[0]
+        # Nếu đã nướng qua bake_graph_brain() thì sẽ có speed_kmh
+        target_speed = edge_data[first_key].get('speed_kmh', 25.0)
     except Exception:
-        hw = 'unclassified'
-
-    # Nhận diện hẻm
-    # Tôi tính trọng số phạt cho hẻm nhẹ hơn để khuyến khích A* chọn đường hẻm nếu có thể
-    is_alley = hw in ['residential', 'living_street', 'service', 'tertiary', 'tertiary_link']
+        target_speed = 25.0
 
     # 3. TÍNH TOÁN LƯỢNG GIÁC
     try: 
@@ -143,14 +140,22 @@ def calc_turn_penalty(graph, prev_node, current_node, next_node):
     angle_rad = math.atan2(cross_prod, dot_prod)
     angle_deg = math.degrees(angle_rad)
 
+    # Đưa ra base time phạt ở nút giao lớn (ví dụ tốc độ 50km/h phạt 30 giây rẽ trái)
+    # Rẽ đường càng to (tốc độ càng cao), ngã tư càng lớn, rẽ càng lâu
+    # Rẽ hẻm (tốc độ thấp), ngã tư hẹp, không đèn tín hiệu, rẽ rất nhanh
+    base_penalty = (target_speed / 50.0) * 30.0
+
     if abs(angle_deg) > 150:
-        return 15.0 if is_alley else 45.0  
+        # Quay đầu: phạt nặng gấp 1.5
+        return round(base_penalty * 1.5, 2)
         
     elif 20 < angle_deg <= 150:
-        return 5.0 if is_alley else 25.0  
+        # Rẽ trái (Cắt dòng xe cộ): phạt gốc
+        return round(base_penalty * 1.0, 2)
         
     elif -150 <= angle_deg < -20:
-        return 2.0 if is_alley else 5.0   
+        # Rẽ phải (Không cắt dòng xe): phạt rất nhẹ (bằng 0.3)
+        return round(base_penalty * 0.3, 2)
         
     else:
         return 0.0   # Đi thẳng

@@ -28,20 +28,26 @@ def create_edge_mapping_and_adjacency(subgraph_path):
     print("Building Line Graph Adjacency...")
     src_list = []
     dst_list = []
+    weight_list = []
     
     for u, v, k in tqdm(G.edges(keys=True), desc="Adjacency"):
         e1_id = edge_to_id[(u, v, k)]
+        speed1 = G[u][v][k].get('speed_kmh', 15.0)
         # Tìm các cạnh kề (v, w)
         for w in G.successors(v):
             for k2 in G[v][w]:
                 e2_id = edge_to_id[(v, w, k2)]
+                speed2 = G[v][w][k2].get('speed_kmh', 15.0)
+                weight = speed2 / (speed1 + speed2)
                 src_list.append(e1_id)
                 dst_list.append(e2_id)
+                weight_list.append(weight)
                 
     edge_index = np.array([src_list, dst_list], dtype=np.int32)
+    edge_weight = np.array(weight_list, dtype=np.float32)
     print(f"Line Graph edges: {edge_index.shape[1]:,}")
     
-    return edge_to_id, id_to_edge, edge_index, num_edges
+    return edge_to_id, id_to_edge, edge_index, edge_weight, num_edges
 
 def load_segment_mapping(segment_file, G, edge_to_id):
     with open(segment_file, 'r', encoding='utf-8') as f:
@@ -61,7 +67,7 @@ def load_segment_mapping(segment_file, G, edge_to_id):
         segment_to_edge_ids[seg_id] = edge_ids
     return segment_to_edge_ids
 
-def process_parquet(parquet_file, start_date, end_date, edge_to_id, id_to_edge, segment_to_edge_ids, baseline_dict, num_edges):
+def process_parquet(parquet_file, start_date, end_date, edge_to_id, id_to_edge, segment_to_edge_ids, baseline_dict, num_edges, G):
     print(f"\nProcessing {parquet_file}...")
     df = pd.read_parquet(parquet_file)
     
@@ -120,18 +126,32 @@ def process_parquet(parquet_file, start_date, end_date, edge_to_id, id_to_edge, 
     day_types = np.where(dow < 4, 1, np.where(dow == 4, 2, 3))
     time_slots = time_index.hour * 4 + time_index.minute // 15
     
-    B = np.full((num_steps, num_edges), 25.0, dtype=np.float32)
-    for e_id in tqdm(range(num_edges), desc="Building Baseline Matrix"):
-        if not np.isnan(X_mat[:, e_id]).any():
-            continue
+    # 1. Khởi tạo B bằng tốc độ vật lý thay vì 25.0 cào bằng
+    native_speeds = np.zeros(num_edges, dtype=np.float32)
+    for e_id in range(num_edges):
         u, v, k = id_to_edge[e_id]
-        for dt in [1, 2, 3]:
-            for slot in range(96):
-                val = baseline_dict.get((u, v, dt, slot), 25.0)
-                if val != 25.0:
-                    mask = (day_types == dt) & (time_slots == slot)
-                    B[mask, e_id] = val
-                    
+        native_speeds[e_id] = G[u][v][k].get('speed_kmh', 15.0)
+        
+    B = np.tile(native_speeds, (num_steps, 1))
+    
+    # 2. Xây dựng mapping và masks để update siêu tốc
+    uv_to_eids = {}
+    for (u, v, k), e_id in edge_to_id.items():
+        uv_to_eids.setdefault((u, v), []).append(e_id)
+
+    mask_cache = {}
+    for dt in [1, 2, 3]:
+        for slot in range(96):
+            mask_cache[(dt, slot)] = (day_types == dt) & (time_slots == slot)
+
+    for (u, v, dt, slot), val in tqdm(baseline_dict.items(), desc="Applying Baseline"):
+        eids = uv_to_eids.get((u, v), [])
+        if not eids:
+            continue
+        mask = mask_cache.get((dt, slot))
+        if mask is not None:
+            B[np.ix_(mask, eids)] = val
+            
     nan_mask = np.isnan(X_mat)
     X_mat[nan_mask] = B[nan_mask]
     
@@ -149,7 +169,7 @@ def main():
     baseline_file = os.path.join(data_dir, 'edge_historical_baseline.pkl')
     
     # 1. Map Edges & Adjacency
-    edge_to_id, id_to_edge, edge_index, num_edges = create_edge_mapping_and_adjacency(subgraph_path)
+    edge_to_id, id_to_edge, edge_index, edge_weight, num_edges = create_edge_mapping_and_adjacency(subgraph_path)
     
     # 2. Segment Mapping
     with open(subgraph_path, 'rb') as f:
@@ -165,7 +185,7 @@ def main():
     train_x = process_parquet(
         os.path.join(data_dir, 'traffic_2026-06.parquet'),
         '2026-06-01 00:00:00', '2026-06-30 23:45:00',
-        edge_to_id, id_to_edge, segment_to_edge_ids, baseline_dict, num_edges
+        edge_to_id, id_to_edge, segment_to_edge_ids, baseline_dict, num_edges, G
     )
     
     # 5. Val Data (July 2026 - first 15 days)
@@ -173,7 +193,7 @@ def main():
     val_x = process_parquet(
         os.path.join(data_dir, 'traffic_2026-07.parquet'),
         '2026-07-01 00:00:00', '2026-07-15 23:45:00',
-        edge_to_id, id_to_edge, segment_to_edge_ids, baseline_dict, num_edges
+        edge_to_id, id_to_edge, segment_to_edge_ids, baseline_dict, num_edges, G
     )
     
     # 6. Save Numpy Arrays
@@ -182,6 +202,7 @@ def main():
     np.savez_compressed(
         out_path,
         edge_index=edge_index,
+        edge_weight=edge_weight,
         train_x=train_x,
         val_x=val_x,
         edge_to_id=edge_to_id,

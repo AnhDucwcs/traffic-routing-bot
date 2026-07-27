@@ -113,11 +113,20 @@ def load_edge_index():
     import numpy as np
     edge_index = np.load(index_path)
     logger.info(f"Edge index loaded with shape {edge_index.shape}.")
+    
+    weight_path = SRC_DIR / "data" / "edge_weight.npy"
+    if weight_path.exists():
+        edge_weight = np.load(weight_path)
+        logger.info(f"Edge weight loaded with shape {edge_weight.shape}.")
+    else:
+        logger.warning("edge_weight.npy not found, using ones.")
+        edge_weight = np.ones(edge_index.shape[1], dtype=np.float32)
+        
     with open(id_to_edge_path, 'rb') as f:
         id_to_edge = pickle.load(f)
-    return id_to_edge, edge_index
+    return id_to_edge, edge_index, edge_weight
 
-def load_stgcn_model(edge_index):
+def load_stgcn_model(edge_index, edge_weight):
     logger.info("Loading STGCN model from disk...")
     
     pth_path = SRC_DIR / "data" / "stgcn_best.pth"
@@ -126,7 +135,7 @@ def load_stgcn_model(edge_index):
         return None
     
     from app.ml.stgcn_inference import STGCNInference
-    stgcn_inference = STGCNInference(pth_path, edge_index)
+    stgcn_inference = STGCNInference(pth_path, edge_index, edge_weight)
     
     logger.info("STGCN model loaded.")
     return stgcn_inference
