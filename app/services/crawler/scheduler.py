@@ -26,6 +26,12 @@ class CrawlerScheduler:
                 logger.info(f"State Hydration: Đã phục hồi thần tốc {len(hot_data)} đoạn đường kẹt xe từ MongoDB vào RAM!")
             else:
                 logger.info("Database trống, chờ đợt crawl đầu tiên...")
+                
+            history = await self.hot_storage.load_stgcn_history()
+            if history:
+                self.traffic_manager.history_buffer.clear()
+                self.traffic_manager.history_buffer.extend(history)
+                logger.info(f"State Hydration: Đã phục hồi {len(history)} khung lịch sử STGCN từ MongoDB!")
         except Exception as e:
             logger.error(f"Lỗi khi phục hồi RAM từ DB: {e}")
 
@@ -65,6 +71,11 @@ class CrawlerScheduler:
 
                         if cold_data:
                             await self.cold_storage.insert_historical_data(cold_data)
+                        
+                        # Task 4: Sao lưu lịch sử STGCN sau mỗi lần cào
+                        if len(self.traffic_manager.history_buffer) > 0:
+                            await self.hot_storage.save_stgcn_history(list(self.traffic_manager.history_buffer))
+                            
                         gc.collect()
                     except Exception as e:
                         logger.exception(f"Lỗi lần cào dữ liệu này: {e}.")

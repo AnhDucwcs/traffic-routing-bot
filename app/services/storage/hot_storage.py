@@ -7,6 +7,8 @@ from pymongo import UpdateOne, ASCENDING
 from pymongo.errors import BulkWriteError
 from datetime import datetime
 import pytz
+import numpy as np
+from bson.binary import Binary
 
 class HotStorageManager:
     def __init__(self):
@@ -103,3 +105,43 @@ class HotStorageManager:
                     "speed_kmh": document.get("speed_kmh", 25.0)
                 })
         return hot_data
+
+    async def save_stgcn_history(self, history_buffer: list):
+        """Lưu trữ lịch sử mảng traffic dưới dạng BSON Binary (siêu tốc, siêu nhẹ)."""
+        if not history_buffer:
+            return
+        
+        # history_buffer là 1 list các np.ndarray. Chuyển chúng thành list các bytes.
+        binary_frames = [Binary(arr.tobytes()) for arr in history_buffer]
+        
+        try:
+            await self.db["stgcn_history"].update_one(
+                {"_id": "stgcn_history_doc"},
+                {
+                    "$set": {
+                        "frames": binary_frames,
+                        "updated_at": datetime.now(pytz.utc)
+                    }
+                },
+                upsert=True
+            )
+            logger.info(f"[Hot DB] Đã lưu {len(history_buffer)} lớp lịch sử STGCN thành công.")
+        except Exception as e:
+            logger.error(f"[Hot DB] Lỗi khi lưu lịch sử STGCN: {e}")
+
+    async def load_stgcn_history(self) -> list:
+        """Kéo lịch sử traffic từ DB và chuyển đổi lại thành các mảng NumPy."""
+        try:
+            doc = await self.db["stgcn_history"].find_one({"_id": "stgcn_history_doc"})
+            if not doc or "frames" not in doc:
+                return []
+            
+            history_buffer = []
+            for b in doc["frames"]:
+                # Ép kiểu np.float32 giống dữ liệu khi thu thập (tốc độ xe)
+                arr = np.frombuffer(b, dtype=np.float32)
+                history_buffer.append(arr)
+            return history_buffer
+        except Exception as e:
+            logger.error(f"[Hot DB] Lỗi khi nạp lịch sử STGCN: {e}")
+            return []
