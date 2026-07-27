@@ -111,8 +111,13 @@ class HotStorageManager:
         if not history_buffer:
             return
         
-        # history_buffer là 1 list các np.ndarray. Chuyển chúng thành list các bytes.
-        binary_frames = [Binary(arr.tobytes()) for arr in history_buffer]
+        # history_buffer là 1 list các tuple (slot, np.ndarray). Chuyển chúng thành list dict.
+        binary_frames = []
+        for slot, arr in history_buffer:
+            binary_frames.append({
+                "slot": slot,
+                "data": Binary(arr.tobytes())
+            })
         
         try:
             await self.db["stgcn_history"].update_one(
@@ -137,10 +142,18 @@ class HotStorageManager:
                 return []
             
             history_buffer = []
-            for b in doc["frames"]:
+            for item in doc["frames"]:
+                # Kiểm tra tương thích ngược nếu db cũ không có slot
+                if isinstance(item, dict) and "slot" in item and "data" in item:
+                    slot = item["slot"]
+                    b = item["data"]
+                else:
+                    # Dữ liệu rác của phiên bản cũ, bỏ qua
+                    continue
+                    
                 # Ép kiểu np.float32 giống dữ liệu khi thu thập (tốc độ xe)
                 arr = np.frombuffer(b, dtype=np.float32)
-                history_buffer.append(arr)
+                history_buffer.append((slot, arr))
             return history_buffer
         except Exception as e:
             logger.error(f"[Hot DB] Lỗi khi nạp lịch sử STGCN: {e}")

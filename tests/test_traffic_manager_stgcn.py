@@ -17,8 +17,8 @@ def traffic_manager():
     print("\n--- [Fixture] Loading Graph and Model ---")
     G = load_routing_graph()
     turn_penalties = load_turn_penalties()
-    id_to_edge, edge_index = load_edge_index()
-    model = load_stgcn_model(edge_index)
+    id_to_edge, edge_index, edge_weight = load_edge_index()
+    model = load_stgcn_model(edge_index, edge_weight)
     baseline = load_historical_baseline()
     
     manager = TrafficManager(G, turn_penalties, baseline, id_to_edge, model)
@@ -40,9 +40,9 @@ def test_stgcn_prediction_integration(traffic_manager):
     print(f"\nTổng số đường (N): {N}")
     
     # 2. Giả lập Buffer: Bơm 4 khung giờ tốc độ ngẫu nhiên từ 15km/h đến 40km/h
-    for _ in range(4):
+    for i in range(4):
         dummy_speeds = np.random.uniform(15.0, 40.0, N).astype(np.float32)
-        manager.history_buffer.append(dummy_speeds)
+        manager.history_buffer.append((i, dummy_speeds))
         
     assert len(manager.history_buffer) == 4, "Buffer không chứa đủ 4 khung giờ"
     

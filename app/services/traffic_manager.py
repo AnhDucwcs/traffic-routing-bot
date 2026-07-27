@@ -26,6 +26,12 @@ class TrafficManager:
             for u, v, k, data in self.G.edges(keys=True, data=True)
         }
         self.bg_weights = self._base_weights.copy()
+        
+        self._base_speeds = {
+            (u, v, k): data.get('speed_kmh', 15.0)
+            for u, v, k, data in self.G.edges(keys=True, data=True)
+        }
+        self.bg_speeds = self._base_speeds.copy()
 
         # Load historical baseline cho T15/T30/T45
         self.edge_baseline = edge_historical_baseline
@@ -83,25 +89,35 @@ class TrafficManager:
                 )
         return result
     
-    def _extract_current_speeds_to_buffer(self):
+    def _extract_current_speeds_to_buffer(self, current_slot):
         N = len(self.id_to_edge)
         current_speeds = np.zeros(N, dtype=np.float32)
         for i in range(N):
             u, v, k = self.id_to_edge[i]
-            base_time = self.G[u][v][k].get('base_time', 10.0)
-            length_m = self._get_length(u, v, k)
-            current_time = self.bg_weights.get((u, v, k), base_time)
-            speed_kmh = (length_m / current_time) * 3.6 if current_time > 0 else 0.0
+            speed_kmh = self.bg_speeds.get((u, v, k), self._base_speeds.get((u, v, k), 15.0))
             current_speeds[i] = speed_kmh
         
-        self.history_buffer.append(current_speeds)
+        self.history_buffer.append((current_slot, current_speeds))
 
     def _predict_future_weights(self):
         if len(self.history_buffer) < 4:
             logger.warning("Not enough historical data for prediction. Using base weights.")
             return None
+            
+        slots = [item[0] for item in self.history_buffer]
+        valid = True
+        for i in range(1, 4):
+            expected = (slots[i-1] + 1) % 96
+            if slots[i] != expected:
+                valid = False
+                break
+                
+        if not valid:
+            logger.warning(f"Temporal gap detected in history buffer: slots {slots}. Clearing buffer.")
+            self.history_buffer.clear()
+            return None
         
-        stacked_input = np.stack(self.history_buffer, axis=-1)[None, :, None, :]
+        stacked_input = np.stack([item[1] for item in self.history_buffer], axis=-1)[None, :, None, :]
         
         predicted_output = self.ai_engine.predict(stacked_input)  # (1, N, horizon)
         
@@ -116,7 +132,7 @@ class TrafficManager:
             return  # Chưa đổi khung 15 phút, bỏ qua
 
         self._cached_slot = current_slot
-        self._extract_current_speeds_to_buffer()
+        self._extract_current_speeds_to_buffer(current_slot)
         future_predictions = self._predict_future_weights()
         dow = vn_now.weekday()
 
@@ -203,6 +219,7 @@ class TrafficManager:
                     penalty_factor = 1.0
                 penalty_factor = min(penalty_factor, 10.0)
                 self.bg_weights[(u, v, k)] = base_time * penalty_factor
+                self.bg_speeds[(u, v, k)] = crawler_speed_kmh
 
                 if penalty_factor > 1.0:
                     spillover_penalty = 1 + (penalty_factor - 1) * spillover_alpha
@@ -221,17 +238,38 @@ class TrafficManager:
                                 current = self.bg_weights.get((node, neighbor, neighbor_k), neighbor_base)
                                 if current < new_weight:
                                     self.bg_weights[(node, neighbor, neighbor_k)] = new_weight
+                                    
+                                neighbor_speed = neighbor_edge.get('speed_kmh', 15.0)
+                                new_speed = neighbor_speed / spillover_penalty
+                                current_speed = self.bg_speeds.get((node, neighbor, neighbor_k), neighbor_speed)
+                                if new_speed < current_speed:
+                                    self.bg_speeds[(node, neighbor, neighbor_k)] = new_speed
 
         # Swap MỘT LẦN duy nhất
         self.refresh_future_weights()
         self.time_weights = (self.bg_weights.copy(), *self._future_dicts)
 
     def reset_traffic(self):
-        """Reset toàn bộ về base_time"""
-        self.bg_weights = {
-            (u, v, k): data.get('base_time', 10.0)
-            for u, v, k, data in self.G.edges(keys=True, data=True)
-        }
-        bw = self._base_weights
+        """Reset toàn bộ về historical_baseline của slot hiện tại, fallback về free-flow"""
+        vn_now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
+        current_slot = vn_now.hour * 4 + vn_now.minute // 15
+        dow = vn_now.weekday()
+        day_type = self._get_day_type(dow)
+        
+        self.bg_speeds = self._base_speeds.copy()
+        self.bg_weights = self._base_weights.copy()
+        
+        # Nếu đang không phải ban đêm, nạp lịch sử làm fallback
+        if current_slot < NIGHT_START_SLOT and current_slot >= NIGHT_END_SLOT:
+            for (u, v, k), base_speed in self._base_speeds.items():
+                hist_speed = self.edge_baseline.get((u, v, day_type, current_slot))
+                if hist_speed and hist_speed > 0:
+                    self.bg_speeds[(u, v, k)] = hist_speed
+                    length_m = self._get_length(u, v, k)
+                    self.bg_weights[(u, v, k)] = length_m / (hist_speed / 3.6) + (
+                        15.0 if self.G.nodes[v].get('traffic_signals', False) else 0.0
+                    )
+        
+        bw = self.bg_weights
         self._future_dicts = (bw.copy(), bw.copy(), bw.copy())
         self.time_weights = (self.bg_weights.copy(), *self._future_dicts)
