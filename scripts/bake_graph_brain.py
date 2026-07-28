@@ -108,10 +108,14 @@ def calc_turn_penalty(graph, prev_node, current_node, next_node):
         return 0.0
         
     # 1. BỘ LỌC NGÃ TƯ: Bỏ qua các "khúc cua" (Shape Nodes)
-    # Lấy các hướng đi tiếp (bỏ hướng quay đầu về prev_node)
-    forward_options = [n for n in graph.successors(current_node) if n != prev_node]
-    if len(forward_options) <= 1:
-        return 0.0 
+    # Nhưng KHÔNG BAO GIỜ bỏ qua U-turn (prev == next)
+    if prev_node != next_node:
+        forward_options = [
+            n for n in graph.successors(current_node)
+            if n != prev_node
+        ]
+        if len(forward_options) <= 1:
+            return 0.0
 
     # 2. XÁC ĐỊNH TỐC ĐỘ: Đường lớn hay hẻm nhỏ?
     try: 
