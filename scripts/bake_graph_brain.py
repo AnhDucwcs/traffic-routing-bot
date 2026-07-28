@@ -174,8 +174,6 @@ def bake_turn_penalties():
     for u in tqdm(G.nodes, desc="Baking Turn Penalties"):
         for prev_u in G.predecessors(u):
             for v in G.successors(u):
-                if prev_u == v: # Bỏ qua trường hợp quay đầu đi ngược lại đúng cạnh cũ
-                    continue
                 penalty = calc_turn_penalty(G, prev_u, u, v)
                 if penalty > 0.0:
                     turn_penalties[(prev_u, u, v)] = penalty
