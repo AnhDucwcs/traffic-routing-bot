@@ -59,7 +59,6 @@ def bake_graph_brain():
 
         # Tiêm các thông số mới vào Edge
         data['base_time'] = round(base_time, 2)
-        data['current_weight'] = round(base_time, 2) # Biến này sẽ bị Crawler thay đổi liên tục
         data['speed_kmh'] = speed_kmh
 
     print("3. Nạp dữ liệu lộ trình xe buýt (V2)...")

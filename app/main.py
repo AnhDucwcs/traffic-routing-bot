@@ -19,6 +19,7 @@ from app.services.routing.service import routing_service
 from app.services.traffic_manager import TrafficManager
 from app.services.storage.hot_storage import HotStorageManager
 from app.services.storage.cold_storage import ColdStorageManager
+from app.services.crowdsource import CrowdsourceManager
 
 setup_logging()
 
@@ -56,11 +57,20 @@ async def lifespan(app: fastapi.FastAPI):
 
     # Start crawler scheduler
     await app.state.hot_storage.ensure_indexes()
+    
+    app.state.crowdsource_manager = CrowdsourceManager(
+        hot_storage=app.state.hot_storage,
+        map_matcher=app.state.map_matcher,
+        traffic_manager=app.state.traffic_manager
+    )
+    await app.state.crowdsource_manager.ensure_indexes()
+    
     app.state.crawler_scheduler = CrawlerScheduler(
         crawler=app.state.crawler,
         traffic_manager=app.state.traffic_manager,
         hot_storage=app.state.hot_storage,
-        cold_storage=app.state.cold_storage
+        cold_storage=app.state.cold_storage,
+        crowdsource_manager=app.state.crowdsource_manager
     )
     app.state.crawler_scheduler.start()
 

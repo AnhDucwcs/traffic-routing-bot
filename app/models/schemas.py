@@ -27,3 +27,9 @@ class RoutingResponse(BaseModel):
     geojson: dict | None = Field(None, description="Dữ liệu GeoJSON của lộ trình")
     route_id: str | None = None
     metadata: dict | None = Field(default_factory=dict, description="Thông tin bổ sung về lộ trình")
+
+class ReportRequest(BaseModel):
+    lat: float = Field(..., ge=-90.0, le=90.0, description="Vĩ độ hiện tại của người dùng")
+    lng: float = Field(..., ge=-180.0, le=180.0, description="Kinh độ hiện tại của người dùng")
+    severity: Literal["congested", "gridlock"] = Field(..., description="Mức độ kẹt xe: congested (15km/h) hoặc gridlock (5km/h)")
+    user_id: int | str = Field(..., description="ID người dùng Telegram")

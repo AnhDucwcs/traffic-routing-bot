@@ -4,7 +4,7 @@ from fastapi import BackgroundTasks, Header, HTTPException
 import httpx
 import time
 import uuid
-from app.models.schemas import RoutingRequest
+from app.models.schemas import RoutingRequest, ReportRequest
 from app.services.response_helper import create_success_response, create_error_response
 from app.core.config import settings
 from app.core.logger import logger
@@ -115,3 +115,15 @@ async def get_routing_result(route_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Không tìm thấy kết quả lộ trình")
     logger.info(f"Trả về kết quả lộ trình cho route_id: {route_id}")
     return route_result
+
+@router.post("/api/v1/report/")
+async def crowdsource_report(
+    request_data: ReportRequest, 
+    request: Request,
+    x_internal_api_key: str = Header(..., alias="x-internal-api-key")
+):
+    if x_internal_api_key != settings.INTERNAL_API_KEY:
+        raise HTTPException(status_code=403, detail="Từ chối truy cập: Sai API Key")
+        
+    crowdsource_manager = request.app.state.crowdsource_manager
+    return await crowdsource_manager.report_jam(request_data)

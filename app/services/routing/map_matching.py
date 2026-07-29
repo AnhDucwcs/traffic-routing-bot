@@ -10,11 +10,11 @@ class MapMatcher:
     def snap_to_edge(self, x: float, y: float, max_dist_m: float = 50.0):
         """
         Input: Tọa độ gốc
-        Output: (u, v, projected_lat, projected_lng, distance_to_edge)
+        Output: (u, v, k, projected_lat, projected_lng, distance_to_edge)
         """
         point = Point(x, y)
         nearest_idx = self.strtree.nearest(point)
-        if not nearest_idx:
+        if nearest_idx is None:
             raise ValueError("Bản đồ trống, không có dữ liệu đường bộ.")
         
         # Lấy cạnh gần nhất
@@ -27,4 +27,4 @@ class MapMatcher:
             raise ValueError(f"Khoảng cách tới đường bộ quá xa ({distance_m:.1f}m > {max_dist_m}m). Không thể tìm đường!")
         
         projected_point = line.interpolate(line.project(point))
-        return (u, v, projected_point.x, projected_point.y, distance_m)
+        return (u, v, key, projected_point.x, projected_point.y, distance_m)

@@ -5,11 +5,12 @@ import pytz
 from loguru import logger
 
 class CrawlerScheduler:
-    def __init__(self, crawler, traffic_manager, hot_storage, cold_storage):
+    def __init__(self, crawler, traffic_manager, hot_storage, cold_storage, crowdsource_manager=None):
         self.crawler = crawler
         self.traffic_manager = traffic_manager
         self.hot_storage = hot_storage
         self.cold_storage = cold_storage
+        self.crowdsource_manager = crowdsource_manager
         self._task = None
         self._stopped = asyncio.Event()
         
@@ -26,6 +27,12 @@ class CrawlerScheduler:
                 logger.info(f"State Hydration: Đã phục hồi thần tốc {len(hot_data)} đoạn đường kẹt xe từ MongoDB vào RAM!")
             else:
                 logger.info("Database trống, chờ đợt crawl đầu tiên...")
+                
+            if self.crowdsource_manager:
+                recent_reports = await self.crowdsource_manager.get_recent_reports(minutes=45)
+                if recent_reports:
+                    await asyncio.to_thread(self.traffic_manager.apply_crowdsourced_overrides, recent_reports)
+                    logger.info(f"State Hydration: Đã overlay {len(recent_reports)} báo cáo từ cộng đồng vào RAM!")
                 
             history = await self.hot_storage.load_stgcn_history()
             if history:
@@ -68,6 +75,13 @@ class CrawlerScheduler:
                             logger.info(f"State Sync: Đã đồng bộ {len(active_hot_data)} đoạn đường kẹt xe từ MongoDB vào RAM!")
                         else:
                             logger.info("Tất cả dữ liệu đã hết hạn TTL, RAM đã được làm sạch.")
+
+                        # Overlay Crowdsourced Reports
+                        if self.crowdsource_manager:
+                            recent_reports = await self.crowdsource_manager.get_recent_reports(minutes=45)
+                            if recent_reports:
+                                await asyncio.to_thread(self.traffic_manager.apply_crowdsourced_overrides, recent_reports)
+                                logger.info(f"State Sync: Đã overlay {len(recent_reports)} báo cáo từ cộng đồng vào RAM!")
 
                         if cold_data:
                             await self.cold_storage.insert_historical_data(cold_data)

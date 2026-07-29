@@ -110,8 +110,8 @@ async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, sta
         end_x, end_y = end_lng, end_lat
 
     # Map points to the nearest edges for more accurate routing
-    start_u, start_v, p_start_x, p_start_y, dist = map_matcher.snap_to_edge(start_x, start_y, max_dist_m=50.0)
-    end_u, end_v, p_end_x, p_end_y, dist = map_matcher.snap_to_edge(end_x, end_y, max_dist_m=50.0)
+    start_u, start_v, start_k, p_start_x, p_start_y, dist = map_matcher.snap_to_edge(start_x, start_y, max_dist_m=50.0)
+    end_u, end_v, end_k, p_end_x, p_end_y, dist = map_matcher.snap_to_edge(end_x, end_y, max_dist_m=50.0)
     logger.info(f"Nhận được yêu cầu tìm đường từ ({start_lat}, {start_lng}) đến ({end_lat}, {end_lng})")
     logger.info(f"Start point: ({p_start_x}, {p_start_y}), End point: ({p_end_x}, {p_end_y})")
     

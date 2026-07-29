@@ -202,8 +202,11 @@ class TrafficManager:
         for item in traffic_data:
             segment_id = item.get('segment_id')
             crawler_speed_kmh = item.get('speed_kmh')
-            if not segment_id or not crawler_speed_kmh:
+            if not segment_id or crawler_speed_kmh is None:
                 continue
+            
+            # Validate input
+            crawler_speed_kmh = max(float(crawler_speed_kmh), 1.0)
 
             target_edges = self.segment_index.get(segment_id, [])
             if not target_edges:
@@ -272,4 +275,67 @@ class TrafficManager:
         
         bw = self.bg_weights
         self._future_dicts = (bw.copy(), bw.copy(), bw.copy())
+        self.time_weights = (self.bg_weights.copy(), *self._future_dicts)
+
+    def apply_crowdsourced_overrides(self, reports: list, spillover_alpha: float = 0.15):
+        """
+        Nhận danh sách các điểm kẹt xe do người dùng báo cáo và áp dụng vào bg_weights.
+        Tự động lan truyền sang các cạnh lân cận giống logic của xe buýt.
+        """
+        if not reports:
+            return
+            
+        for report in reports:
+            u = report.get('u')
+            v = report.get('v')
+            k = report.get('k')
+            crawler_speed_kmh = report.get('speed_kmh')
+            
+            if u is None or v is None or k is None or crawler_speed_kmh is None:
+                continue
+            
+            # Validate input
+            crawler_speed_kmh = max(float(crawler_speed_kmh), 1.0)
+                
+            if not self.G.has_edge(u, v, k):
+                continue
+                
+            edge_data = self.G[u][v][k]
+            base_time = edge_data.get('base_time', 10.0)
+            base_speed_kmh = edge_data.get('speed_kmh', 25.0)
+            
+            if crawler_speed_kmh <= base_speed_kmh:
+                penalty_factor = base_speed_kmh / crawler_speed_kmh
+            else:
+                penalty_factor = 1.0
+                
+            penalty_factor = min(penalty_factor, 10.0)
+            self.bg_weights[(u, v, k)] = base_time * penalty_factor
+            self.bg_speeds[(u, v, k)] = crawler_speed_kmh
+            
+            if penalty_factor > 1.0:
+                spillover_penalty = 1 + (penalty_factor - 1) * spillover_alpha
+            else:
+                spillover_penalty = 1.0
+                
+            for node in (u, v):
+                for neighbor in self.G.successors(node):
+                    if neighbor in (u, v):
+                        continue
+                    for neighbor_k in self.G[node][neighbor]:
+                        neighbor_edge = self.G[node][neighbor][neighbor_k]
+                        if not neighbor_edge.get('is_bus_route', False):
+                            neighbor_base = neighbor_edge.get('base_time', 10.0)
+                            new_weight = neighbor_base * spillover_penalty
+                            current = self.bg_weights.get((node, neighbor, neighbor_k), neighbor_base)
+                            if current < new_weight:
+                                self.bg_weights[(node, neighbor, neighbor_k)] = new_weight
+                                
+                            neighbor_speed = neighbor_edge.get('speed_kmh', 15.0)
+                            new_speed = neighbor_speed / spillover_penalty
+                            current_speed = self.bg_speeds.get((node, neighbor, neighbor_k), neighbor_speed)
+                            if new_speed < current_speed:
+                                self.bg_speeds[(node, neighbor, neighbor_k)] = new_speed
+
+        self.refresh_future_weights()
         self.time_weights = (self.bg_weights.copy(), *self._future_dicts)
