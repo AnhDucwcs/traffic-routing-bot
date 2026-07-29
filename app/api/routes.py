@@ -80,8 +80,15 @@ async def process_routing_background(payload: RoutingRequest, app_state):
 
     async with httpx.AsyncClient() as client:
         try:
-            headers = {"x-internal-api-key": settings.INTERNAL_API_KEY}
-            await client.post(callback_url, json=response_payload, headers=headers, timeout=10.0)
+            headers = {
+                "x-internal-api-key": settings.INTERNAL_API_KEY
+            }
+            await client.post(
+                callback_url,
+                json=response_payload,
+                headers=headers,
+                timeout=10.0,
+            )
             logger.info(f"Đã trả kết quả về Callback: {callback_url}")
         except Exception as e:
             logger.error(f"Lỗi khi gọi Callback: {e}")
