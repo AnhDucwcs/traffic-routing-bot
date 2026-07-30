@@ -1,0 +1,96 @@
+import os
+import sys
+import pickle
+import asyncio
+import certifi
+from motor.motor_asyncio import AsyncIOMotorClient
+from pathlib import Path
+from collections import defaultdict
+from app.core.config import settings
+
+# Setup paths
+SRC_DIR = Path(__file__).resolve().parent.parent
+sys.path.append(str(SRC_DIR))
+
+
+MONGO_URI = settings.MONGO_URI
+DB_NAME = "traffic_db"
+BASELINE_PATH = SRC_DIR / "data" / "edge_historical_baseline.pkl"
+
+ALPHA = 0.9  # Trọng số cho Phase 1 (90% báo cáo thực tế, 10% baseline cũ)
+
+async def main():
+    print("Bắt đầu phân tích báo cáo giao thông từ người dùng...")
+    
+    # 1. Kết nối MongoDB
+    client = AsyncIOMotorClient(MONGO_URI, tlsCAFile=certifi.where())
+    db = client[DB_NAME]
+    
+    # 2. Lấy các reports chưa xử lý
+    cursor = db.traffic_reports.find({"processed": {"$ne": True}})
+    reports = await cursor.to_list(length=None)
+    
+    if not reports:
+        print("Không có báo cáo mới nào cần xử lý. Thoát script.")
+        return
+        
+    print(f"Tìm thấy {len(reports)} báo cáo mới.")
+    
+    # 3. Tải Baseline cũ
+    edge_baseline = {}
+    if BASELINE_PATH.exists():
+        with open(BASELINE_PATH, 'rb') as f:
+            edge_baseline = pickle.load(f)
+        print(f"Đã tải {len(edge_baseline):,} records từ baseline hiện tại.")
+    else:
+        print("Không tìm thấy file baseline cũ. Hãy tạo một file baseline mới.")
+        return
+        
+    # 4. Gom nhóm (u, v, day_type, time_slot)
+    grouped_reports = defaultdict(list)
+    for rep in reports:
+        u, v = rep['u'], rep['v']
+        day_type = rep.get('day_type', 1)
+        time_slot = rep.get('time_slot', 0)
+        speed = rep['speed_kmh']
+        
+        # Nhóm theo đúng key của baseline
+        grouped_reports[(u, v, day_type, time_slot)].append(speed)
+        
+    # 5. Phân tích và Cập nhật
+    updates_count = 0
+    new_records_count = 0
+    
+    for key, speeds in grouped_reports.items():
+        avg_reported_speed = sum(speeds) / len(speeds)
+        
+        if key in edge_baseline:
+            old_speed = edge_baseline[key]
+            # Exponential Moving Average (EMA) - blend giữa cũ và mới
+            new_speed = (1 - ALPHA) * old_speed + ALPHA * avg_reported_speed
+            edge_baseline[key] = new_speed
+            updates_count += 1
+        else:
+            # Chưa từng có trong lịch sử thì lấy thẳng
+            edge_baseline[key] = avg_reported_speed
+            new_records_count += 1
+            
+    # 6. Lưu file Pickle
+    with open(BASELINE_PATH, 'wb') as f:
+        pickle.dump(edge_baseline, f)
+        
+    print(f"Đã lưu baseline mới với {len(edge_baseline):,} records tổng cộng.")
+    print(f"   - Cập nhật {updates_count} records cũ")
+    print(f"   - Thêm mới {new_records_count} records")
+    
+    # 7. Đánh dấu đã xử lý trong DB
+    report_ids = [rep['_id'] for rep in reports]
+    result = await db.traffic_reports.update_many(
+        {"_id": {"$in": report_ids}},
+        {"$set": {"processed": True}}
+    )
+    print(f"Đã đánh dấu {result.modified_count} báo cáo thành 'processed' trong DB.")
+    print("Hoàn tất!")
+
+if __name__ == "__main__":
+    asyncio.run(main())

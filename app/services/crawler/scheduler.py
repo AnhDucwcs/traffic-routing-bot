@@ -13,6 +13,17 @@ class CrawlerScheduler:
         self.crowdsource_manager = crowdsource_manager
         self._task = None
         self._stopped = asyncio.Event()
+        self._last_sync_date = None
+        
+    async def _sync_morning_baseline(self):
+        """Khôi phục baseline từ ổ cứng và đè báo cáo 7 ngày (Phase 1)"""
+        if self.crowdsource_manager:
+            try:
+                seven_day_reports = await self.crowdsource_manager.get_historical_reports(days=7)
+                await asyncio.to_thread(self.traffic_manager.sync_morning_baseline, seven_day_reports)
+                logger.info("[Scheduler] Đã hoàn tất đồng bộ Baseline (Reset RAM & Đè 7 ngày).")
+            except Exception as e:
+                logger.error(f"[Scheduler] Lỗi khi đồng bộ Baseline: {e}")
         
     async def _update_hot_db(self, traffic_data):
         await asyncio.to_thread(self.traffic_manager.batch_apply_traffic_penalty, traffic_data)
@@ -20,7 +31,11 @@ class CrawlerScheduler:
     async def hydrate_ram(self):
         """Phục hồi dữ liệu kẹt xe từ MongoDB lên RAM khi khởi động"""
         try:
-            self.traffic_manager.reset_traffic()
+            if self.crowdsource_manager:
+                await self._sync_morning_baseline()
+            else:
+                self.traffic_manager.reset_traffic()
+                
             hot_data = await self.hot_storage.get_active_traffic_data()
             if hot_data:
                 await self._update_hot_db(hot_data)
@@ -63,6 +78,12 @@ class CrawlerScheduler:
 
                 if should_crawl:
                     try:
+                        now_date = now_vn.date()
+                        if self._last_sync_date != now_date:
+                            if self.crowdsource_manager:
+                                await self._sync_morning_baseline()
+                            self._last_sync_date = now_date
+                            
                         hot_data, cold_data = await self.crawler.run_campaign()
                         if hot_data:
                             await self.hot_storage.upsert_traffic_data(hot_data)

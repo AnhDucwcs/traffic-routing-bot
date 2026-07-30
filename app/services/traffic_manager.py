@@ -339,3 +339,40 @@ class TrafficManager:
 
         self.refresh_future_weights()
         self.time_weights = (self.bg_weights.copy(), *self._future_dicts)
+
+    def sync_morning_baseline(self, seven_day_reports: list):
+        """
+        Khôi phục baseline từ ổ cứng để xóa rác RAM, sau đó đè báo cáo 7 ngày lên (Phase 1: đè 100%).
+        """
+        import pickle
+        from pathlib import Path
+        
+        # 1. Nạp lại baseline gốc từ đĩa
+        # Vì script này chạy trong app FastAPI, thư mục gốc thường là thư mục chứa app/
+        baseline_path = Path("data/edge_historical_baseline.pkl")
+        if baseline_path.exists():
+            try:
+                with open(baseline_path, 'rb') as f:
+                    self.edge_baseline = pickle.load(f)
+                logger.info("[Baseline Sync] Đã nạp lại baseline gốc từ ổ cứng.")
+            except Exception as e:
+                logger.error(f"[Baseline Sync] Lỗi nạp file baseline: {e}")
+        else:
+            logger.warning(f"[Baseline Sync] Không tìm thấy file {baseline_path}, giữ nguyên baseline hiện tại.")
+            
+        # 2. Đè 100% các báo cáo 7 ngày
+        if seven_day_reports:
+            count = 0
+            for rep in seven_day_reports:
+                u = rep.get('u')
+                v = rep.get('v')
+                day_type = rep.get('day_type')
+                time_slot = rep.get('time_slot')
+                speed = rep.get('speed_kmh')
+                if None not in (u, v, day_type, time_slot, speed):
+                    self.edge_baseline[(u, v, day_type, time_slot)] = speed
+                    count += 1
+            logger.info(f"[Baseline Sync] Đã ghi đè {count} reports 7 ngày lên RAM.")
+            
+        # 3. Áp dụng ngay vào routing hiện tại
+        self.reset_traffic()

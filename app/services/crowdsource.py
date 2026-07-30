@@ -98,3 +98,33 @@ class CrowdsourceManager:
                 "speed_kmh": doc["speed_kmh"]
             })
         return reports
+
+    async def get_historical_reports(self, days: int = 7):
+        """Lấy các reports trong vòng 7 ngày qua, nhóm theo (u, v, day_type, time_slot) và tính trung bình tốc độ"""
+        from datetime import timedelta
+        from collections import defaultdict
+        
+        cutoff_time = datetime.now(timezone.utc) - timedelta(days=days)
+        cursor = self.db.traffic_reports.find({"created_at": {"$gte": cutoff_time}})
+        
+        grouped = defaultdict(list)
+        async for doc in cursor:
+            u, v = doc.get("u"), doc.get("v")
+            day_type = doc.get("day_type")
+            time_slot = doc.get("time_slot")
+            speed = doc.get("speed_kmh")
+            if None not in (u, v, day_type, time_slot, speed):
+                grouped[(u, v, day_type, time_slot)].append(speed)
+                
+        results = []
+        for (u, v, day_type, time_slot), speeds in grouped.items():
+            avg_speed = sum(speeds) / len(speeds)
+            results.append({
+                "u": u,
+                "v": v,
+                "day_type": day_type,
+                "time_slot": time_slot,
+                "speed_kmh": avg_speed
+            })
+            
+        return results
