@@ -46,22 +46,42 @@ async def main():
         print("Không tìm thấy file baseline cũ. Hãy tạo một file baseline mới.")
         return
         
-    # 4. Gom nhóm (u, v, day_type, time_slot)
+    # 4. Phân loại và Gom nhóm
+    market_edges = set()
     grouped_reports = defaultdict(list)
+    
     for rep in reports:
         u, v = rep['u'], rep['v']
-        day_type = rep.get('day_type', 1)
-        time_slot = rep.get('time_slot', 0)
-        speed = rep['speed_kmh']
+        severity = rep.get('severity', '')
         
-        # Nhóm theo đúng key của baseline
-        grouped_reports[(u, v, day_type, time_slot)].append(speed)
+        if severity == 'market':
+            market_edges.add((u, v))
+        else:
+            day_type = rep.get('day_type', 1)
+            time_slot = rep.get('time_slot', 0)
+            speed = rep['speed_kmh']
+            grouped_reports[(u, v, day_type, time_slot)].append(speed)
         
     # 5. Phân tích và Cập nhật
     updates_count = 0
     new_records_count = 0
     
+    # 5.1 Ghi đè Hẻm Chợ vĩnh viễn (market)
+    for (u, v) in market_edges:
+        for day in [1, 2, 3]:
+            for t in range(96):
+                key = (u, v, day, t)
+                if key not in edge_baseline:
+                    new_records_count += 1
+                else:
+                    updates_count += 1
+                edge_baseline[key] = 1.0
+                
+    # 5.2 Xử lý các báo cáo kẹt xe tạm thời
     for key, speeds in grouped_reports.items():
+        if (key[0], key[1]) in market_edges:
+            continue  # Đã bị khóa là chợ, bỏ qua báo cáo thường
+            
         avg_reported_speed = sum(speeds) / len(speeds)
         
         if key in edge_baseline:

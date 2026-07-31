@@ -40,7 +40,18 @@ class CrowdsourceManager:
         except ValueError as e:
             raise HTTPException(status_code=400, detail="Bạn không ở gần đường lộ (khoảng cách > 50m).")
             
-        speed_kmh = 15.0 if request.severity == "congested" else 5.0
+        if request.severity == "market":
+            # Biện pháp bảo vệ: Không cho phép đánh dấu Hẻm Chợ trên các đường lớn
+            edge_data = self.traffic_manager.G.get_edge_data(u, v, k)
+            if edge_data:
+                highway = edge_data.get('highway', '')
+                if highway in ['primary', 'primary_link', 'secondary', 'secondary_link', 'trunk', 'trunk_link']:
+                    raise HTTPException(status_code=400, detail="Không thể báo cáo Hẻm Chợ trên đường lớn.")
+            speed_kmh = 1.0
+        elif request.severity == "congested":
+            speed_kmh = 15.0
+        else:
+            speed_kmh = 5.0
         
         vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
         now_vn = datetime.now(vn_tz)
