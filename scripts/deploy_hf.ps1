@@ -14,6 +14,9 @@ git rm -rf --cached . 2>$null
 Add-Content .gitignore "`n*.png`n*.jpg`n*.jpeg`n.data_backup/" -ErrorAction SilentlyContinue
 
 git add .
+git lfs track "*.pkl" "*.npy" "*.pth" "*.feather"
+git add .gitattributes
+
 git add -f data\hcmc_routing_brain_v2.pkl
 git add -f data\turn_penalties.pkl
 git add -f data\hcmc_geometry_store.feather
@@ -24,6 +27,7 @@ git add -f data\edge_index.npy
 git add -f data\edge_weight.npy
 git add -f data\id_to_edge.pkl
 git add -f data\stgcn_best.pth
+git add -f data\edge_historical_baseline.pkl
 
 git commit -m "Deploy to HuggingFace"
 
