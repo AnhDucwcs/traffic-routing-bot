@@ -90,8 +90,8 @@ class CrowdsourceManager:
         return {
             "status": "success",
             "message": "Đã ghi nhận báo cáo giao thông",
-            "edge": [u, v, k],
-            "speed_applied": speed_kmh
+            "edge": [int(u), int(v), int(k)],
+            "speed_applied": float(speed_kmh)
         }
 
     async def get_recent_reports(self, minutes: int = 45):
