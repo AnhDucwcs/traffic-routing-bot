@@ -123,12 +123,12 @@ class TrafficManager:
         
         return predicted_output
 
-    def refresh_future_weights(self):
+    def refresh_future_weights(self, force=False):
         """Rebuild T15/T30/T45 nếu time_slot thay đổi. Gọi bởi Crawler sau batch update."""
         vn_now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
         current_slot = vn_now.hour * 4 + vn_now.minute // 15
 
-        if current_slot == self._cached_slot:
+        if current_slot == self._cached_slot and not force:
             return  # Chưa đổi khung 15 phút, bỏ qua
 
         self._cached_slot = current_slot
@@ -337,7 +337,37 @@ class TrafficManager:
                             if new_speed < current_speed:
                                 self.bg_speeds[(node, neighbor, neighbor_k)] = new_speed
 
-        self.refresh_future_weights()
+        self.refresh_future_weights(force=True)
+        
+        # Temporal slope: inject decayed penalty
+        # T15=70%, T30=50%, T45=20%
+        decay = (0.7, 0.5, 0.2)
+        future_list = list(self._future_dicts)
+        for report in reports:
+            u = report.get('u')
+            v = report.get('v')
+            k = report.get('k')
+            spd = report.get('speed_kmh')
+            if u is None or v is None or k is None or spd is None:
+                continue
+            if not self.G.has_edge(u, v, k):
+                continue
+            edge = self.G[u][v][k]
+            base_time = edge.get('base_time', 10.0)
+            base_spd = edge.get('speed_kmh', 25.0)
+            spd = max(float(spd), 1.0)
+            if spd >= base_spd:
+                continue
+            full_pf = min(base_spd / spd, 10.0)
+            for i, d in enumerate(decay):
+                pf = 1.0 + (full_pf - 1.0) * d
+                penalized = base_time * pf
+                cur = future_list[i].get(
+                    (u, v, k), base_time
+                )
+                if penalized > cur:
+                    future_list[i][(u, v, k)] = penalized
+        self._future_dicts = tuple(future_list)
         self.time_weights = (self.bg_weights.copy(), *self._future_dicts)
 
     def sync_morning_baseline(self, seven_day_reports: list):
@@ -360,7 +390,7 @@ class TrafficManager:
         else:
             logger.warning(f"[Baseline Sync] Không tìm thấy file {baseline_path}, giữ nguyên baseline hiện tại.")
             
-        # 2. Đè 100% các báo cáo 7 ngày
+        # 2. Đè 100% các báo cáo 7 ngày + temporal slope
         if seven_day_reports:
             count = 0
             for rep in seven_day_reports:
@@ -370,9 +400,27 @@ class TrafficManager:
                 time_slot = rep.get('time_slot')
                 speed = rep.get('speed_kmh')
                 if None not in (u, v, day_type, time_slot, speed):
-                    self.edge_baseline[(u, v, day_type, time_slot)] = speed
+                    key = (u, v, day_type, time_slot)
+                    old = self.edge_baseline.get(key, speed)
+                    self.edge_baseline[key] = speed
                     count += 1
-            logger.info(f"[Baseline Sync] Đã ghi đè {count} reports 7 ngày lên RAM.")
+                    # Slope: ±1=70%, ±2=30%
+                    delta = old - speed
+                    if delta > 0:
+                        for ns, r in ((-1, 0.7), (1, 0.7),
+                                      (-2, 0.3), (2, 0.3)):
+                            s = time_slot + ns
+                            if 0 <= s < 96:
+                                nk = (u, v, day_type, s)
+                                n_old = self.edge_baseline.get(
+                                    nk, old
+                                )
+                                bl = n_old - delta * r
+                                if bl < n_old:
+                                    self.edge_baseline[nk] = max(
+                                        bl, 1.0
+                                    )
+            logger.info(f"[Baseline Sync] Đã ghi đè {count} reports 7 ngày lên RAM (có slope).")
             
         # 3. Áp dụng ngay vào routing hiện tại
         self.reset_traffic()

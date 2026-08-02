@@ -83,6 +83,7 @@ async def main():
             continue  # Đã bị khóa là chợ, bỏ qua báo cáo thường
             
         avg_reported_speed = sum(speeds) / len(speeds)
+        u, v, day_type, time_slot = key
         
         if key in edge_baseline:
             old_speed = edge_baseline[key]
@@ -90,6 +91,23 @@ async def main():
             new_speed = (1 - ALPHA) * old_speed + ALPHA * avg_reported_speed
             edge_baseline[key] = new_speed
             updates_count += 1
+            
+            # Temporal slope: ±1=70%, ±2=30%
+            delta = old_speed - new_speed
+            if delta > 0:
+                for ns, r in ((-1, 0.7), (1, 0.7),
+                              (-2, 0.3), (2, 0.3)):
+                    s = time_slot + ns
+                    if 0 <= s < 96:
+                        nk = (u, v, day_type, s)
+                        n_old = edge_baseline.get(
+                            nk, old_speed
+                        )
+                        bl = n_old - delta * r
+                        if bl < n_old:
+                            edge_baseline[nk] = max(
+                                bl, 1.0
+                            )
         else:
             # Chưa từng có trong lịch sử thì lấy thẳng
             edge_baseline[key] = avg_reported_speed
