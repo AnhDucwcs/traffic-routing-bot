@@ -13,11 +13,20 @@ class RoutingService:
         _, to_wgs84 = traffic_manager.to_graph, traffic_manager.to_wgs84
         coordinates = []
         coordinates.append((start_lng, start_lat))
+        accumulated_s = 0.0
+        
         # Lắp ráp từng đoạn cong (LineString) của các cạnh
         for i in range(len(path) - 1):
             u, v = path[i], path[i + 1]
             edges = traffic_manager.G[u][v]
-            best_key = min(edges.keys(), key=lambda k: traffic_manager.active_weights.get((u, v, k), 10.0))
+            
+            time_idx = min(int(accumulated_s // 900), 3)
+            tw = traffic_manager.time_weights[time_idx]
+            best_key = min(edges.keys(), key=lambda k: tw.get((u, v, k), 10.0))
+            
+            if edge_times and i < len(edge_times):
+                accumulated_s += edge_times[i] * 60
+                
             line = geom_dict.get((u, v, best_key))
             
             if line:

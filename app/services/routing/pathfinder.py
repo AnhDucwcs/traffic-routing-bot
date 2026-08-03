@@ -141,15 +141,19 @@ async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, sta
         
         total_distance_m = 0
         edge_times = []
+        accumulated_s = 0.0  #Thời gian tích luỹ
         
         for i in range(len(path) - 1):
             u, v = path[i], path[i + 1]
             edges = traffic_manager.G[u][v]
             
-            # ponytail: Post-processing luôn dùng T0 (thời điểm hiện tại)
-            t0 = traffic_manager.time_weights[0]
-            best_k = min(edges, key=lambda k: t0.get((u, v, k), 10.0))
-            edge_time_s = t0.get((u, v, best_k), 10.0)
+            # Chọn bucket thời gian giống A* (900s = 15 phút)
+            time_idx = min(int(accumulated_s // 900), 3)
+            tw = traffic_manager.time_weights[time_idx]
+            best_k = min(edges, key=lambda k: tw.get((u, v, k), 10.0))
+            
+            edge_time_s = tw.get((u, v, best_k), 10.0)
+            accumulated_s += edge_time_s
             total_distance_m += edges[best_k].get('length', 0)
             edge_times.append(round(edge_time_s / 60, 4))
         
