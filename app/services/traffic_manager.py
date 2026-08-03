@@ -43,6 +43,12 @@ class TrafficManager:
         # time_weights: (T0, T15, T30, T45) - Atomic swap via GIL
         self.time_weights = (self._base_weights.copy(), *self._future_dicts)
 
+        # Cache bus routes for radial traffic layer
+        self._bus_edges_cache = [
+            (u, v, k) for u, v, k, data in self.G.edges(keys=True, data=True)
+            if data.get('is_bus_route', False)
+        ]
+
         #
         self.to_graph, self.to_wgs84 = self._get_transformers()
 
@@ -424,3 +430,87 @@ class TrafficManager:
             
         # 3. Áp dụng ngay vào routing hiện tại
         self.reset_traffic()
+
+    def get_radial_traffic_layer(self, user_lat: float, user_lng: float, geom_dict: dict) -> dict:
+        import math
+
+        def haversine(lat1, lon1, lat2, lon2):
+            R = 6371000  # radius of Earth in meters
+            phi1 = math.radians(lat1)
+            phi2 = math.radians(lat2)
+            dphi = math.radians(lat2 - lat1)
+            dlambda = math.radians(lon2 - lon1)
+            a = math.sin(dphi/2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda/2)**2
+            return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+        features_by_color = {
+            "green": [],
+            "yellow": [],
+            "orange": [],
+            "red": []
+        }
+
+        for u, v, k in self._bus_edges_cache:
+            line = geom_dict.get((u, v, k))
+            if not line:
+                continue
+
+            # Tính tọa độ điểm v (đích của đoạn đường)
+            v_x, v_y = self.G.nodes[v]['x'], self.G.nodes[v]['y']
+            lng_v, lat_v = self.to_wgs84.transform(v_x, v_y)
+
+            # Khung thời gian mặc định (nếu không có GPS)
+            time_idx = 0
+            if user_lat is not None and user_lng is not None:
+                d = haversine(user_lat, user_lng, lat_v, lng_v)
+                # Tốc độ giả định 30km/h = 8.33 m/s
+                t = d / 8.33
+                # Tính bucket (mỗi 900s), cộng buffer 300s (5 phút) để quét trước tương lai gần
+                time_idx = min(int((t + 300) // 900), 3)
+
+            # Lấy speed của bucket tương ứng
+            tw = self.time_weights[time_idx]
+            edge_time_s = tw.get((u, v, k), 10.0)
+            length_m = self.G[u][v][k].get('length', 1.0)
+            
+            # Khử turn penalties để tính đúng speed của đường
+            if self.G.nodes[v].get('traffic_signals', False):
+                edge_time_s = max(1.0, edge_time_s - 15.0)
+
+            speed_kmh = (length_m / edge_time_s) * 3.6
+            base_speed = self._base_speeds.get((u, v, k), 15.0)
+
+            ratio = speed_kmh / base_speed if base_speed > 0 else 1.0
+
+            if ratio >= 0.8:
+                color = "green"
+            elif ratio >= 0.5:
+                color = "yellow"
+            elif ratio >= 0.3:
+                color = "orange"
+            else:
+                color = "red"
+
+            coords = list(line.coords)
+            wgs_coords = [self.to_wgs84.transform(x, y) for x, y in coords]
+            features_by_color[color].append(wgs_coords)
+
+        # Chuyển đổi thành FeatureCollection với MultiLineString
+        geojson_features = []
+        for color, lines in features_by_color.items():
+            if lines:
+                geojson_features.append({
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "MultiLineString",
+                        "coordinates": lines
+                    },
+                    "properties": {
+                        "color": color
+                    }
+                })
+
+        return {
+            "type": "FeatureCollection",
+            "features": geojson_features
+        }

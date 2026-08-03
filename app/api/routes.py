@@ -80,13 +80,9 @@ async def process_routing_background(payload: RoutingRequest, app_state):
 
     async with httpx.AsyncClient() as client:
         try:
-            headers = {
-                "x-internal-api-key": settings.INTERNAL_API_KEY
-            }
             await client.post(
                 callback_url,
                 json=response_payload,
-                headers=headers,
                 timeout=10.0,
             )
             logger.info(f"Đã trả kết quả về Callback: {callback_url}")
@@ -127,3 +123,24 @@ async def crowdsource_report(
         
     crowdsource_manager = request.app.state.crowdsource_manager
     return await crowdsource_manager.report_jam(request_data)
+
+@router.get("/api/v1/traffic-layer/")
+async def get_traffic_layer(
+    request: Request,
+    lat: float = None,
+    lng: float = None,
+    x_internal_api_key: str = Header(..., alias="x-internal-api-key")
+):
+    """
+    Returns a GeoJSON FeatureCollection of 4 MultiLineStrings (green, yellow, orange, red)
+    representing the current (and future projected) traffic layer, calculated via radial 
+    Haversine distance from the user's provided lat/lng.
+    """
+    if x_internal_api_key != settings.INTERNAL_API_KEY:
+        raise HTTPException(status_code=403, detail="Từ chối truy cập: Sai API Key")
+        
+    traffic_manager = request.app.state.traffic_manager
+    geom_dict = request.app.state.geom_dict
+    
+    geojson = traffic_manager.get_radial_traffic_layer(lat, lng, geom_dict)
+    return geojson
