@@ -1,7 +1,0 @@
-data/hcmc_geometry_store.feather filter=lfs diff=lfs merge=lfs -text
-data/hcmc_routing_brain_v2.pkl filter=lfs diff=lfs merge=lfs -text
-data/turn_penalties.pkl filter=lfs diff=lfs merge=lfs -text
-data/edge_index.npy filter=lfs diff=lfs merge=lfs -text
-data/edge_weight.npy filter=lfs diff=lfs merge=lfs -text
-data/id_to_edge.pkl filter=lfs diff=lfs merge=lfs -text
-data/stgcn_best.pth filter=lfs diff=lfs merge=lfs -text
