@@ -95,7 +95,7 @@ async def process_routing_background(payload: RoutingRequest, app_state):
                 json=response_payload,
                 timeout=10.0,
             )
-            logger.info(f"Đã trả kết quả về Callback: {callback_url}")
+            logger.info(f"Đã trả kết quả về Callback")
         except Exception as e:
             logger.error(f"Lỗi khi gọi Callback: {e}")
 
