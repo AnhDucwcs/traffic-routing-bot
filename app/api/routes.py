@@ -137,14 +137,15 @@ async def crowdsource_report(
 @router.get("/api/v1/traffic-layer/")
 async def get_traffic_layer(
     request: Request,
-    lat: float = None,
-    lng: float = None,
+    min_lng: float,
+    min_lat: float,
+    max_lng: float,
+    max_lat: float,
     x_internal_api_key: str = Header(..., alias="x-internal-api-key")
 ):
     """
     Returns a GeoJSON FeatureCollection of 4 MultiLineStrings (green, yellow, orange, red)
-    representing the current (and future projected) traffic layer, calculated via radial 
-    Haversine distance from the user's provided lat/lng.
+    representing the current traffic layer within a bounding box.
     """
     if x_internal_api_key != settings.INTERNAL_API_KEY:
         raise HTTPException(status_code=403, detail="Từ chối truy cập: Sai API Key")
@@ -152,5 +153,5 @@ async def get_traffic_layer(
     traffic_manager = request.app.state.traffic_manager
     geom_dict = request.app.state.geom_dict
     
-    geojson = traffic_manager.get_radial_traffic_layer(lat, lng, geom_dict)
+    geojson = traffic_manager.get_bbox_traffic_layer(min_lng, min_lat, max_lng, max_lat, geom_dict)
     return geojson

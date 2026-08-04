@@ -431,18 +431,7 @@ class TrafficManager:
         # 3. Áp dụng ngay vào routing hiện tại
         self.reset_traffic()
 
-    def get_radial_traffic_layer(self, user_lat: float, user_lng: float, geom_dict: dict) -> dict:
-        import math
-
-        def haversine(lat1, lon1, lat2, lon2):
-            R = 6371000  # radius of Earth in meters
-            phi1 = math.radians(lat1)
-            phi2 = math.radians(lat2)
-            dphi = math.radians(lat2 - lat1)
-            dlambda = math.radians(lon2 - lon1)
-            a = math.sin(dphi/2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda/2)**2
-            return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
+    def get_bbox_traffic_layer(self, min_lng: float, min_lat: float, max_lng: float, max_lat: float, geom_dict: dict) -> dict:
         features_by_color = {
             "green": [],
             "yellow": [],
@@ -450,25 +439,29 @@ class TrafficManager:
             "red": []
         }
 
+        # BBox filter with some padding to ensure lines don't get cut off abruptly
+        pad_lng = 0.005 # ~500m
+        pad_lat = 0.005
+        padded_min_lng = min_lng - pad_lng
+        padded_max_lng = max_lng + pad_lng
+        padded_min_lat = min_lat - pad_lat
+        padded_max_lat = max_lat + pad_lat
+
         for u, v, k in self._bus_edges_cache:
+            # Lấy đỉnh v (đích)
+            v_x, v_y = self.G.nodes[v]['x'], self.G.nodes[v]['y']
+            lng_v, lat_v = self.to_wgs84.transform(v_x, v_y)
+            
+            # Check BBox
+            if not (padded_min_lng <= lng_v <= padded_max_lng and padded_min_lat <= lat_v <= padded_max_lat):
+                continue
+                
             line = geom_dict.get((u, v, k))
             if not line:
                 continue
 
-            # Tính tọa độ điểm v (đích của đoạn đường)
-            v_x, v_y = self.G.nodes[v]['x'], self.G.nodes[v]['y']
-            lng_v, lat_v = self.to_wgs84.transform(v_x, v_y)
-
-            # Khung thời gian mặc định (nếu không có GPS)
+            # Always use current time (T0 bucket) for realtime map layer
             time_idx = 0
-            if user_lat is not None and user_lng is not None:
-                d = haversine(user_lat, user_lng, lat_v, lng_v)
-                # Tốc độ giả định 30km/h = 8.33 m/s
-                t = d / 8.33
-                # Tính bucket (mỗi 900s), cộng buffer 300s (5 phút) để quét trước tương lai gần
-                time_idx = min(int((t + 300) // 900), 3)
-
-            # Lấy speed của bucket tương ứng
             tw = self.time_weights[time_idx]
             edge_time_s = tw.get((u, v, k), 10.0)
             length_m = self.G[u][v][k].get('length', 1.0)
