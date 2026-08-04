@@ -23,6 +23,16 @@ async def root():
 @router.head("/health-check")
 async def health_check():
     return {"status": "healthy"}
+def make_serializable(obj):
+    if type(obj).__name__ == 'float32':
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {k: make_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_serializable(i) for i in obj]
+    elif isinstance(obj, tuple):
+        return tuple(make_serializable(i) for i in obj)
+    return obj
 
 async def process_routing_background(payload: RoutingRequest, app_state):
     logger.info(f"Bắt đầu xử lý ngầm: Conversation {payload.conversation_id}")
@@ -64,7 +74,7 @@ async def process_routing_background(payload: RoutingRequest, app_state):
         logger.exception(f"Lỗi khi xử lý lộ trình: {e}")
         data = create_error_response(user_id, conversation_id, f"Lỗi khi xử lý lộ trình: {e}")
 
-    response_payload = data.model_dump()
+    response_payload = make_serializable(data.model_dump())
  
     if payload.platform == "telegram":
         callback_url = settings.TELEGRAM_BOT_CALLBACK_URL
