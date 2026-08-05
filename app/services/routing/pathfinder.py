@@ -19,7 +19,7 @@ def calc_time_from_point_to_node(p: tuple, node_id: int, graph) -> float:
     node_x = graph.nodes[node_id]['x']
     node_y = graph.nodes[node_id]['y']
     h = math.hypot(p_x - node_x, p_y - node_y)
-    t = h / 5.55 # Tốc độ heuristic là 20km/h (sát với thực tế kẹt xe HCMC) để tránh A* bị giáng cấp thành Dijkstra
+    t = h / 10 # Tốc độ heuristic là 36km/h
     return t
 
 def custom_astar_path(traffic_manager, start_edge: tuple, p_start: tuple, end_edge: tuple, p_end: tuple, heuristic_func):
@@ -124,9 +124,9 @@ async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, sta
     logger.info(f"Start point: ({p_start_x}, {p_start_y}), End point: ({p_end_x}, {p_end_y})")
     
     if to_wgs84:
-        start_lng, start_lat = to_wgs84.transform(p_start_x, p_start_y)
-        end_lng, end_lat = to_wgs84.transform(p_end_x, p_end_y)
-        logger.info(f"Điểm xuất phát sau khi chiếu: ({start_lat}, {start_lng}), Điểm đích sau khi chiếu: ({end_lat}, {end_lng})")
+        snapped_start_lng, snapped_start_lat = to_wgs84.transform(p_start_x, p_start_y)
+        snapped_end_lng, snapped_end_lat = to_wgs84.transform(p_end_x, p_end_y)
+        logger.info(f"Điểm xuất phát sau khi chiếu: ({snapped_start_lat}, {snapped_start_lng}), Điểm đích sau khi chiếu: ({snapped_end_lat}, {snapped_end_lng})")
 
     if start_u == end_u and start_v == end_v:
         logger.info("Điểm xuất phát và điểm đích nằm trên cùng một cạnh. Không cần tìm đường.")
