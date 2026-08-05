@@ -22,7 +22,10 @@ class RoutingService:
             
             time_idx = min(int(accumulated_s // 900), 3)
             tw = traffic_manager.time_weights[time_idx]
-            best_key = min(edges.keys(), key=lambda k: tw.get((u, v, k), 10.0))
+            if len(edges) == 1:
+                best_key = 0
+            else:
+                best_key = min(edges.keys(), key=lambda k: tw.get((u, v, k), 10.0))
             
             if edge_times and i < len(edge_times):
                 accumulated_s += edge_times[i] * 60

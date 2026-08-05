@@ -3,6 +3,7 @@ import fastapi
 from fastapi.staticfiles import StaticFiles
 from cachetools import TTLCache
 import psutil
+import networkx as nx
 import os
 from loguru import logger
 from app.api.routes import router
@@ -33,18 +34,28 @@ async def lifespan(app: fastapi.FastAPI):
     ram_before = get_current_ram_mb()  # Gọi một lần để log RAM trước khi nạp graph
     
     app.state.graph = load_routing_graph()
+    
+    logger.info("Đang tính toán Largest SCC để lọc đường chết...")
+    largest_scc = set(max(nx.strongly_connected_components(app.state.graph), key=len))
+    valid_edges = {(u, v) for u, v in app.state.graph.edges() if u in largest_scc and v in largest_scc}
     target_crs = app.state.graph.graph['crs']
     strtree, edge_ids, app.state.geom_dict = load_feather_data(target_crs)
-    app.state.map_matcher = MapMatcher(strtree, edge_ids, app.state.geom_dict)
+    app.state.map_matcher = MapMatcher(strtree, edge_ids, app.state.geom_dict, valid_edges=valid_edges)
+    
     turn_penalties = load_turn_penalties()
     edge_historical_baseline = load_historical_baseline()
     id_to_edge, edge_index, edge_weight = load_edge_index()
     model = load_stgcn_model(edge_index, edge_weight)
     app.state.traffic_manager = TrafficManager(app.state.graph, turn_penalties, edge_historical_baseline, id_to_edge, model)
+    
     app.state.route_results = TTLCache(maxsize=1000, ttl=300)  
+    
     app.state.hot_storage = HotStorageManager()
+    
     app.state.cold_storage = ColdStorageManager(sync_interval_minutes=60)
+    
     segment_lengths = load_segment_lengths()
+    
     route_stop_sequence = load_route_stop_sequence()
     app.state.traffic_manager.build_index(segment_lengths)
     

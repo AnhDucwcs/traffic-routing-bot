@@ -19,7 +19,7 @@ def calc_time_from_point_to_node(p: tuple, node_id: int, graph) -> float:
     node_x = graph.nodes[node_id]['x']
     node_y = graph.nodes[node_id]['y']
     h = math.hypot(p_x - node_x, p_y - node_y)
-    t = h / 12.5 # Tốc độ là 45km/h
+    t = h / 5.55 # Tốc độ heuristic là 20km/h (sát với thực tế kẹt xe HCMC) để tránh A* bị giáng cấp thành Dijkstra
     return t
 
 def custom_astar_path(traffic_manager, start_edge: tuple, p_start: tuple, end_edge: tuple, p_end: tuple, heuristic_func):
@@ -55,7 +55,14 @@ def custom_astar_path(traffic_manager, start_edge: tuple, p_start: tuple, end_ed
         heapq.heappush(open_set, (time_to_u + heuristic_func(p_end, start_u), next(c), start_u, start_v, time_to_u))
         g_score[(start_u, start_v)] = time_to_u
 
+    max_expansions = 60000
+    expansions = 0
+
     while open_set:
+        expansions += 1
+        if expansions > max_expansions:
+            raise nx.NetworkXNoPath(f"Đã vượt quá giới hạn tìm kiếm ({max_expansions} nodes). Có thể điểm đến bị cô lập.")
+            
         f, _, current, prev_node, current_g = heapq.heappop(open_set)
         
         if current in valid_targets:
@@ -78,10 +85,11 @@ def custom_astar_path(traffic_manager, start_edge: tuple, p_start: tuple, end_ed
             # ponytail: Chọn rổ thời gian dựa trên g_score tích lũy (900s = 15 phút)
             time_idx = min(int(current_g // 900), 3)
             tw = traffic_manager.time_weights[time_idx]
-            travel_time = min(
-                tw.get((current, neighbor, k), 10.0)
-                for k in edges
-            )
+            # ponytail: Tối ưu vòng lặp (99% đường chỉ có 1 key là 0)
+            if len(edges) == 1:
+                travel_time = tw.get((current, neighbor, 0), 10.0)
+            else:
+                travel_time = min(tw.get((current, neighbor, k), 10.0) for k in edges)
             
             # GỌI HÀM PHẠT GÓC RẼ
             turn_penalty = traffic_manager.turn_penalties.get((prev_node, current, neighbor), 0.0)
@@ -110,8 +118,8 @@ async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, sta
         end_x, end_y = end_lng, end_lat
 
     # Map points to the nearest edges for more accurate routing
-    start_u, start_v, start_k, p_start_x, p_start_y, dist = map_matcher.snap_to_edge(start_x, start_y, max_dist_m=50.0)
-    end_u, end_v, end_k, p_end_x, p_end_y, dist = map_matcher.snap_to_edge(end_x, end_y, max_dist_m=50.0)
+    start_u, start_v, start_k, p_start_x, p_start_y, dist = map_matcher.snap_to_edge(start_x, start_y, max_dist_m=200.0)
+    end_u, end_v, end_k, p_end_x, p_end_y, dist = map_matcher.snap_to_edge(end_x, end_y, max_dist_m=200.0)
     logger.info(f"Nhận được yêu cầu tìm đường từ ({start_lat}, {start_lng}) đến ({end_lat}, {end_lng})")
     logger.info(f"Start point: ({p_start_x}, {p_start_y}), End point: ({p_end_x}, {p_end_y})")
     
@@ -150,9 +158,13 @@ async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, sta
             # Chọn bucket thời gian giống A* (900s = 15 phút)
             time_idx = min(int(accumulated_s // 900), 3)
             tw = traffic_manager.time_weights[time_idx]
-            best_k = min(edges, key=lambda k: tw.get((u, v, k), 10.0))
-            
-            edge_time_s = tw.get((u, v, best_k), 10.0)
+            # ponytail: Tối ưu loop
+            if len(edges) == 1:
+                best_k = 0
+                edge_time_s = tw.get((u, v, 0), 10.0)
+            else:
+                best_k = min(edges, key=lambda k: tw.get((u, v, k), 10.0))
+                edge_time_s = tw.get((u, v, best_k), 10.0)
             accumulated_s += edge_time_s
             total_distance_m += edges[best_k].get('length', 0)
             edge_times.append(round(edge_time_s / 60, 4))
