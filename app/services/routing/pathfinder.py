@@ -127,6 +127,9 @@ async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, sta
         snapped_start_lng, snapped_start_lat = to_wgs84.transform(p_start_x, p_start_y)
         snapped_end_lng, snapped_end_lat = to_wgs84.transform(p_end_x, p_end_y)
         logger.info(f"Điểm xuất phát sau khi chiếu: ({snapped_start_lat}, {snapped_start_lng}), Điểm đích sau khi chiếu: ({snapped_end_lat}, {snapped_end_lng})")
+    else:
+        snapped_start_lng, snapped_start_lat = p_start_x, p_start_y
+        snapped_end_lng, snapped_end_lat = p_end_x, p_end_y
 
     if start_u == end_u and start_v == end_v:
         logger.info("Điểm xuất phát và điểm đích nằm trên cùng một cạnh. Không cần tìm đường.")
@@ -172,7 +175,7 @@ async def find_shortest_path(traffic_manager, map_matcher, start_lat: float, sta
         distance_km = round(total_distance_m / 1000, 2)
         estimated_time_min = round(total_time_s / 60, 2)
         logger.info(f"Tìm thấy đường đi: {distance_km} km, thời gian dự kiến: {estimated_time_min} phút")
-        return path, distance_km, estimated_time_min, edge_times, start_lng, start_lat, end_lng, end_lat
+        return path, distance_km, estimated_time_min, edge_times, snapped_start_lng, snapped_start_lat, snapped_end_lng, snapped_end_lat
     except nx.NetworkXNoPath:
         logger.info("Không tìm thấy đường đi giữa hai điểm.")
         return None, None, None, None, None, None, None, None

@@ -63,6 +63,10 @@ async def process_routing_background(payload: RoutingRequest, app_state):
                 source_lng, source_lat, dest_lng, dest_lat,
                 edge_times
             )
+            # Chèn toạ độ gốc để tạo đoạn nét đứt đi bộ
+            coords = geojson['geometry']['coordinates']
+            coords.insert(0, (start_lng, start_lat))
+            coords.append((end_lng, end_lat))
             route_id = str(uuid.uuid4())
             app_state.route_results[route_id] = {
                 "geojson": geojson,
