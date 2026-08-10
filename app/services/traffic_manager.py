@@ -103,7 +103,10 @@ class TrafficManager:
             speed_kmh = self.bg_speeds.get((u, v, k), self._base_speeds.get((u, v, k), 15.0))
             current_speeds[i] = speed_kmh
         
-        self.history_buffer.append((current_slot, current_speeds))
+        if self.history_buffer and self.history_buffer[-1][0] == current_slot:
+            self.history_buffer[-1] = (current_slot, current_speeds)
+        else:
+            self.history_buffer.append((current_slot, current_speeds))
 
     def _predict_future_weights(self):
         if len(self.history_buffer) < 4:
