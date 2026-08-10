@@ -35,6 +35,10 @@ def is_valid_motorcycle_edge(tags):
     access = tags.get("access")
     if access in ["private", "no", "customers", "delivery", "military", "permit"]:
         return False
+        
+    # Chặn đường có chữ "nội bộ" trong tên (vá lỗi OSM Việt Nam)
+    if "nội bộ" in str(tags.get("name", "")).lower():
+        return False
 
     # Chặn đường cấm xe cơ giới / cấm xe máy (dù nó là residential)
     if tags.get("motor_vehicle") == "no" or tags.get("motorcycle") == "no":
