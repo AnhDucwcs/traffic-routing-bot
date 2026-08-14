@@ -294,6 +294,10 @@ class TrafficManager:
         if not reports:
             return
             
+        # Temporal slope: inject decayed penalty
+        # T15=70%, T30=50%, T45=20%
+        # 1-hop 70%, 2-hop 50%, 3-hop 20%
+        decay = (0.7, 0.5, 0.2)
         for report in reports:
             u = report.get('u')
             v = report.get('v')
@@ -323,34 +327,56 @@ class TrafficManager:
             self.bg_speeds[(u, v, k)] = crawler_speed_kmh
             
             if penalty_factor > 1.0:
-                spillover_penalty = 1 + (penalty_factor - 1) * spillover_alpha
-            else:
-                spillover_penalty = 1.0
+                # ponytail: Naive 3-hop downstream, 1-hop upstream spillover instead of metric BFS to save RAM & CPU
+                spillover_edges = {} # (u, v, k) -> decay_value
+                edge_name = str(edge_data.get('name', '')).strip().lower()
                 
-            for node in (u, v):
-                for neighbor in self.G.successors(node):
-                    if neighbor in (u, v):
-                        continue
-                    for neighbor_k in self.G[node][neighbor]:
-                        neighbor_edge = self.G[node][neighbor][neighbor_k]
-                        if not neighbor_edge.get('is_bus_route', False):
-                            neighbor_base = neighbor_edge.get('base_time', 10.0)
-                            new_weight = neighbor_base * spillover_penalty
-                            current = self.bg_weights.get((node, neighbor, neighbor_k), neighbor_base)
-                            if current < new_weight:
-                                self.bg_weights[(node, neighbor, neighbor_k)] = new_weight
-                                
-                            neighbor_speed = neighbor_edge.get('speed_kmh', 15.0)
-                            new_speed = neighbor_speed / spillover_penalty
-                            current_speed = self.bg_speeds.get((node, neighbor, neighbor_k), neighbor_speed)
-                            if new_speed < current_speed:
-                                self.bg_speeds[(node, neighbor, neighbor_k)] = new_speed
+                if edge_name and edge_name != 'none':
+                    # 1-hop upstream
+                    for p in self.G.predecessors(u):
+                        for pk in self.G[p][u]:
+                            if str(self.G[p][u][pk].get('name', '')).strip().lower() == edge_name:
+                                spillover_edges[(p, u, pk)] = decay[0]
+                    
+                    # 3-hop downstream
+                    current_nodes = {v}
+                    for i in range(3):
+                        next_nodes = set()
+                        for node in current_nodes:
+                            for succ in self.G.successors(node):
+                                for sk in self.G[node][succ]:
+                                    if str(self.G[node][succ][sk].get('name', '')).strip().lower() == edge_name:
+                                        if (node, succ, sk) not in spillover_edges:
+                                            spillover_edges[(node, succ, sk)] = decay[i]
+                                        next_nodes.add(succ)
+                        current_nodes = next_nodes
+                else:
+                    # Fallback to naive 1-hop any-name
+                    for node in (u, v):
+                        for neighbor in self.G.successors(node):
+                            if neighbor in (u, v): continue
+                            for neighbor_k in self.G[node][neighbor]:
+                                spillover_edges[(node, neighbor, neighbor_k)] = decay[0]
+
+                for (su, sv, sk), d_val in spillover_edges.items():
+                    neighbor_edge = self.G[su][sv][sk]
+                    if not neighbor_edge.get('is_bus_route', False):
+                        neighbor_base = neighbor_edge.get('base_time', 10.0)
+                        
+                        effective_penalty = 1.0 + (penalty_factor - 1.0) * d_val
+                        new_weight = neighbor_base * effective_penalty
+                        current = self.bg_weights.get((su, sv, sk), neighbor_base)
+                        if current < new_weight:
+                            self.bg_weights[(su, sv, sk)] = new_weight
+                            
+                        neighbor_speed = neighbor_edge.get('speed_kmh', 15.0)
+                        new_speed = neighbor_speed / effective_penalty
+                        current_speed = self.bg_speeds.get((su, sv, sk), neighbor_speed)
+                        if new_speed < current_speed:
+                            self.bg_speeds[(su, sv, sk)] = new_speed
 
         self.refresh_future_weights(force=True)
         
-        # Temporal slope: inject decayed penalty
-        # T15=70%, T30=50%, T45=20%
-        decay = (0.7, 0.5, 0.2)
         future_list = list(self._future_dicts)
         for report in reports:
             u = report.get('u')
